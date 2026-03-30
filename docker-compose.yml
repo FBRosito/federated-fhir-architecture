@@ -1,0 +1,101 @@
+services:
+
+  # ─────────────────────────────────────────────
+  # HAPI FHIR Server — validação e armazenamento
+  # ─────────────────────────────────────────────
+  hapi_fhir:
+    image: hapiproject/hapi:latest
+    container_name: hapi_fhir
+    ports:
+      - "8080:8080"
+    environment:
+      hapi.fhir.fhir_version: R4
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/fhir/metadata"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - fl_net
+
+  # ─────────────────────────────────────────────
+  # FL Server — orquestrador Flower (SuperLink)
+  # ─────────────────────────────────────────────
+  fl_server:
+    build:
+      context: .
+      dockerfile: fl_server/Dockerfile
+    container_name: fl_server
+    ports:
+      - "9091:9091"   # gRPC SuperLink
+      - "9092:9092"   # REST SuperLink (opcional)
+    environment:
+      FL_SERVER_ADDRESS: "0.0.0.0:9091"
+      FL_MIN_CLIENTS: "1"
+      FL_NUM_ROUNDS: "5"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('localhost', 9091), 2)"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    networks:
+      - fl_net
+
+  # ─────────────────────────────────────────────
+  # ETL Worker — extração e transformação FHIR
+  # ─────────────────────────────────────────────
+  etl_worker:
+    build:
+      context: .
+      dockerfile: etl_worker/Dockerfile
+    container_name: etl_worker
+    environment:
+      FHIR_SERVER_URL: "http://hapi_fhir:8080/fhir"
+    depends_on:
+      hapi_fhir:
+        condition: service_healthy
+    volumes:
+      - etl_data:/app/data
+    networks:
+      - fl_net
+
+  # ─────────────────────────────────────────────
+  # AI Client — cliente Flower com GPU (NVIDIA)
+  # ─────────────────────────────────────────────
+  ai_client:
+    build:
+      context: .
+      dockerfile: ai_client/Dockerfile
+    container_name: ai_client
+    environment:
+      FL_SERVER_ADDRESS: "fl_server:9091"
+      FHIR_SERVER_URL: "http://hapi_fhir:8080/fhir"
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+    depends_on:
+      hapi_fhir:
+        condition: service_healthy
+      fl_server:
+        condition: service_healthy
+    volumes:
+      - etl_data:/app/data:ro
+      - model_cache:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      - fl_net
+
+volumes:
+  etl_data:
+  model_cache:
+
+networks:
+  fl_net:
+    driver: bridge

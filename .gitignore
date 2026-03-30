@@ -1,0 +1,113 @@
+# =============================================================================
+# Python
+# =============================================================================
+__pycache__/
+*.py[oc]
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Build artifacts
+build/
+dist/
+wheels/
+*.egg-info/
+.eggs/
+
+# =============================================================================
+# uv / Virtual Environments
+# =============================================================================
+.venv/
+venv/
+env/
+
+# =============================================================================
+# Environment & Secrets
+# =============================================================================
+.env
+.env.*
+!.env.example
+
+# =============================================================================
+# Machine Learning — Models, Weights & Cache
+# =============================================================================
+
+# Model directories
+models/
+lora_weights/
+checkpoints/
+runs/
+
+# HuggingFace cache
+.cache/huggingface/
+~/.cache/huggingface/
+
+# Model weight formats
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.ckpt
+*.gguf
+
+# PEFT / LoRA adapter artifacts
+adapter_config.json
+adapter_model.*
+
+# =============================================================================
+# HAPI FHIR — Local Databases
+# =============================================================================
+*.db
+*.sqlite
+*.sqlite3
+*.h2.mv.db
+*.h2.trace.db
+hapi-fhir-jpaserver-starter/target/
+
+# =============================================================================
+# Clinical Data — Raw & Simulated
+# =============================================================================
+
+# Data directories (clinical/simulated data must not be committed)
+data/
+!etl_worker/data/.gitkeep
+
+# Tabular and structured data files
+*.csv
+*.parquet
+*.feather
+*.arrow
+*.xlsx
+*.xls
+
+# JSON data files (but NOT configuration files at project root)
+**/*data*.json
+**/*dataset*.json
+**/data/**/*.json
+
+# =============================================================================
+# Evaluation Logs & Outputs
+# =============================================================================
+evaluation/logs/
+*.log
+*.out
+tensorboard/
+wandb/
+mlflow/
+
+# =============================================================================
+# Jupyter
+# =============================================================================
+.ipynb_checkpoints/
+*.ipynb
+
+# =============================================================================
+# IDE & OS
+# =============================================================================
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
