@@ -28,4 +28,4 @@ RUN uv sync --frozen --package fl-server --no-dev
 
 EXPOSE 9091 9092
 
-CMD ["uv", "run", "fl-server"]
+CMD ["/app/.venv/bin/fl-server"]

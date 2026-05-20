@@ -1,0 +1,61 @@
+{
+  "tag": "fl_fedavg_alpha0.5_nodp_llm_seed43",
+  "completed_at": "2026-05-05T12:43:14.481751Z",
+  "config": {
+    "backend": "llm",
+    "strategy": "fedavg",
+    "noise_multiplier": 0.0,
+    "n_silos": 5,
+    "seed": 43,
+    "num_rounds": 2,
+    "proximal_mu": 0.0
+  },
+  "per_round_eval": [
+    {
+      "server_round": 1.0,
+      "eval_perplexity": 100.6301,
+      "partition_id": 2.2,
+      "eval_f1_at_5": 0.0,
+      "eval_recall_at_5": 0.0,
+      "eval_acc_at_5": 0.0,
+      "eval_prec_at_5": 0.0,
+      "eval_icd10_accuracy": 0.0,
+      "eval_loss": 4.4807,
+      "train_loss": 4.7317,
+      "lora_b_norm_end": 0.0103,
+      "proximal_mu": 0.01,
+      "lora_b_drift_ratio": 10337309.6519
+    },
+    {
+      "server_round": 2.0,
+      "eval_perplexity": 65.9292,
+      "partition_id": 2.2,
+      "eval_f1_at_5": 0.0,
+      "eval_recall_at_5": 0.0,
+      "eval_icd10_accuracy": 0.0,
+      "eval_prec_at_5": 0.0,
+      "eval_acc_at_5": 0.0,
+      "eval_loss": 4.0725,
+      "train_loss": 4.4067,
+      "lora_b_norm_end": 0.0167,
+      "proximal_mu": 0.01,
+      "lora_b_drift_ratio": 2.1399
+    }
+  ],
+  "final_metrics": {
+    "server_round": 2.0,
+    "eval_perplexity": 65.9292,
+    "partition_id": 2.2,
+    "eval_f1_at_5": 0.0,
+    "eval_recall_at_5": 0.0,
+    "eval_icd10_accuracy": 0.0,
+    "eval_prec_at_5": 0.0,
+    "eval_acc_at_5": 0.0,
+    "eval_loss": 4.0725,
+    "train_loss": 4.4067,
+    "lora_b_norm_end": 0.0167,
+    "proximal_mu": 0.01,
+    "lora_b_drift_ratio": 2.1399
+  },
+  "n_rounds_completed": 2
+}

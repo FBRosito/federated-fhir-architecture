@@ -1,2 +1,3 @@
-def main() -> None:
-    print("Hello from fl-server!")
+from fl_server.server import main
+
+__all__ = ["main"]

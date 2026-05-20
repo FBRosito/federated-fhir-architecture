@@ -27,12 +27,13 @@ import json
 import logging
 import os
 import sys
+import time
 import uuid
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
-import requests
+import httpx
 from fhir.resources.bundle import Bundle, BundleEntry, BundleEntryRequest
 from fhir.resources.composition import Composition
 from fhir.resources.condition import Condition
@@ -263,15 +264,9 @@ def build_document_reference(
                 "creation": row["record_date"],
             }
         }],
-        "relatesTo": [{
-            "code": {
-                "coding": [{
-                    "system": "http://hl7.org/fhir/document-relationship-type",
-                    "code": "transforms",
-                }]
-            },
-            "target": {"reference": composition_urn},
-        }],
+        # relatesTo.target exige referência a outro DocumentReference (FHIR R4 §10.3.2).
+        # A ligação com a Composition é mantida via Composition.section.entry (build_composition).
+
     })
     return urn, doc_ref
 
@@ -309,25 +304,78 @@ def build_transaction_bundle(
 
 # ── Envio para HAPI FHIR ──────────────────────────────────────────────────────
 
-def post_bundle(bundle: Bundle, fhir_url: str) -> dict[str, Any]:
+def post_bundle(
+    bundle: Bundle,
+    fhir_url: str,
+    *,
+    retry_interval: float = 5.0,
+    timeout_total: float = 120.0,
+) -> dict[str, Any]:
     """
-    Envia um Transaction Bundle via POST para o endpoint FHIR.
+    Envia um Transaction Bundle via POST para o endpoint FHIR com retentativas.
+
+    Erros transitórios (servidor ainda inicializando) são retentados a cada
+    `retry_interval` segundos por até `timeout_total` segundos antes de desistir.
+    Erros permanentes de cliente (4xx) não são retentados.
+
+    Args:
+        bundle:        Bundle FHIR a enviar.
+        fhir_url:      URL base do servidor HAPI FHIR.
+        retry_interval: Intervalo em segundos entre tentativas (padrão: 5 s).
+        timeout_total:  Tempo máximo de espera acumulado em segundos (padrão: 120 s).
 
     Returns:
         Dicionário com a resposta do servidor (Bundle de resposta ou OperationOutcome).
 
     Raises:
-        requests.HTTPError: quando o servidor retorna 4xx/5xx.
+        httpx.HTTPStatusError: quando o servidor retorna 4xx (erro permanente).
+        httpx.TransportError:  quando o servidor permanece inacessível após o timeout total.
     """
-    payload = bundle.model_dump_json(exclude_none=True)
-    response = requests.post(
-        fhir_url,
-        data=payload.encode("utf-8"),
-        headers={"Content-Type": "application/fhir+json; charset=UTF-8"},
-        timeout=30,
-    )
-    response.raise_for_status()
-    return response.json()
+    payload = bundle.model_dump_json(exclude_none=True).encode("utf-8")
+    headers = {"Content-Type": "application/fhir+json; charset=UTF-8"}
+    deadline = time.monotonic() + timeout_total
+    attempt = 0
+
+    while True:
+        attempt += 1
+        try:
+            response = httpx.post(fhir_url, content=payload, headers=headers, timeout=30)
+
+            content_type = response.headers.get("content-type", "")
+            is_fhir_json = "json" in content_type or "fhir" in content_type
+
+            if 200 <= response.status_code < 300:
+                return response.json()
+
+            # 4xx com JSON/FHIR → erro real do cliente (bundle inválido); não retentar
+            if 400 <= response.status_code < 500 and is_fhir_json:
+                response.raise_for_status()
+
+            # 4xx com HTML = Tomcat ainda inicializando (boot do JPA incompleto);
+            # 5xx = servidor sobrecarregado/reiniciando — ambos são transitórios
+            raise httpx.HTTPStatusError(
+                f"Servidor retornou {response.status_code} (Content-Type: {content_type!r})",
+                request=response.request,
+                response=response,
+            )
+
+        except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError) as exc:
+            remaining = deadline - time.monotonic()
+            is_permanent_client_error = (
+                isinstance(exc, httpx.HTTPStatusError)
+                and exc.response.status_code < 500
+                and ("json" in exc.response.headers.get("content-type", "")
+                     or "fhir" in exc.response.headers.get("content-type", ""))
+            )
+            if is_permanent_client_error or remaining <= 0:
+                raise
+
+            log.warning(
+                "Tentativa %d — HAPI FHIR indisponível (%s). "
+                "Nova tentativa em %.0f s (restam %.0f s).",
+                attempt, exc, retry_interval, remaining,
+            )
+            time.sleep(min(retry_interval, remaining))
 
 
 def _summarise_response(resp: dict[str, Any], patient_id: str) -> None:
@@ -381,10 +429,10 @@ def process_row(row: pd.Series, fhir_url: str, dry_run: bool = False) -> bool:
         _summarise_response(resp, row["patient_id"])
         return True
 
-    except requests.HTTPError as exc:
+    except httpx.HTTPStatusError as exc:
         log.error("HTTP %s ao processar %s: %s",
                   exc.response.status_code, row["patient_id"], exc.response.text[:300])
-    except requests.ConnectionError:
+    except httpx.ConnectError:
         log.error("Sem conexão com FHIR em %s. Verifique se o container hapi_fhir está no ar.", fhir_url)
     except Exception as exc:  # noqa: BLE001
         log.exception("Erro inesperado ao processar %s: %s", row["patient_id"], exc)

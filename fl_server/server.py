@@ -77,6 +77,7 @@ def _env_str(key: str, default: str) -> str:
 
 
 SERVER_ADDRESS      = _env_str("FL_SERVER_ADDRESS", "[::]:9091")
+ROUND_TIMEOUT       = _env_float("FL_ROUND_TIMEOUT", 3600.0)   # 1h — aguarda clientes
 NUM_ROUNDS          = _env_int("FL_NUM_ROUNDS", 5)
 MIN_CLIENTS         = _env_int("FL_MIN_CLIENTS", 2)
 STRATEGY_NAME       = _env_str("FL_STRATEGY", "fedprox").lower()
@@ -86,6 +87,7 @@ INITIAL_CLIP_NORM   = _env_float("FL_INITIAL_CLIP_NORM", 1.0)
 CLIP_NORM_TARGET_Q  = _env_float("FL_CLIP_NORM_TARGET_Q", 0.5)
 FRACTION_FIT        = _env_float("FL_FRACTION_FIT", 1.0)
 FRACTION_EVAL       = _env_float("FL_FRACTION_EVAL", 1.0)
+LEARNING_RATE       = _env_float("FL_LEARNING_RATE", 5e-5)
 
 # ── Estimativa do orçamento de privacidade (Gaussian Mechanism approx.) ───────
 
@@ -227,8 +229,7 @@ def make_fit_config_fn(proximal_mu: float):
         config: dict[str, Scalar] = {
             "server_round":  server_round,
             "proximal_mu":   proximal_mu,
-            # Decaimento do learning rate a partir do round 3
-            "learning_rate": 2e-4 if server_round <= 2 else 1e-4,
+            "learning_rate": LEARNING_RATE if server_round <= 2 else LEARNING_RATE * 0.4,
             "num_epochs":    1,
         }
         log.debug("fit_config round %d: %s", server_round, config)
@@ -241,7 +242,7 @@ def make_eval_config_fn():
     def eval_config(server_round: int) -> dict[str, Scalar]:
         return {
             "server_round": server_round,
-            "compute_accuracy": True,
+            "compute_accuracy": False,
         }
     return eval_config
 
@@ -418,7 +419,7 @@ def main() -> None:
 
     history = start_server(
         server_address         = SERVER_ADDRESS,
-        config                 = ServerConfig(num_rounds=NUM_ROUNDS, round_timeout=300.0),
+        config                 = ServerConfig(num_rounds=NUM_ROUNDS, round_timeout=ROUND_TIMEOUT),
         strategy               = strategy,
         grpc_max_message_length = 512 * 1024 * 1024,  # 512 MB — LLM weights são grandes
     )

@@ -1,0 +1,142 @@
+{
+  "bert": {
+    "primary_metric": "micro_f1",
+    "baseline": "fl_fedavg_alpha0.5_nodp_bert",
+    "configs": {
+      "fl_fedavg_alpha0.5_nodp_bert": {
+        "ci": "0.1056 \u00b1 0.0251 [95% CI: 0.0896\u20130.1309] (n=3)",
+        "mean": 0.10556666666666666,
+        "ci_lower": 0.0896,
+        "ci_upper": 0.1309
+      },
+      "fl_fedprox_alpha0.5_dp0.5_bert": {
+        "ci": "0.0720 \u00b1 0.0197 [95% CI: 0.0600\u20130.0920] (n=3)",
+        "mean": 0.07203333333333334,
+        "ci_lower": 0.06,
+        "ci_upper": 0.09200000000000001
+      },
+      "fl_fedprox_alpha0.5_dp1.0_bert": {
+        "ci": "0.0780 \u00b1 0.0219 [95% CI: 0.0623\u20130.0996] (n=3)",
+        "mean": 0.07796666666666666,
+        "ci_lower": 0.0623,
+        "ci_upper": 0.09959999999999998
+      },
+      "fl_fedprox_alpha0.5_dp2.0_bert": {
+        "ci": "0.0901 \u00b1 0.0286 [95% CI: 0.0610\u20130.1061] (n=3)",
+        "mean": 0.09013333333333333,
+        "ci_lower": 0.061,
+        "ci_upper": 0.10610000000000001
+      },
+      "fl_fedprox_alpha0.5_nodp_bert": {
+        "ci": "0.0727 \u00b1 0.0160 [95% CI: 0.0610\u20130.0884] (n=3)",
+        "mean": 0.07273333333333333,
+        "ci_lower": 0.061,
+        "ci_upper": 0.08839999999999999
+      }
+    },
+    "comparisons_vs_baseline": {
+      "fl_fedprox_alpha0.5_dp0.5_bert": {
+        "statistic": 0.0,
+        "p_value": 0.25,
+        "n_pairs": 3,
+        "significant_at_05": false,
+        "p_value_bonferroni": 1.0,
+        "significant_at_05_bonferroni": false
+      },
+      "fl_fedprox_alpha0.5_dp1.0_bert": {
+        "statistic": 1.0,
+        "p_value": 0.5,
+        "n_pairs": 3,
+        "significant_at_05": false,
+        "p_value_bonferroni": 1.0,
+        "significant_at_05_bonferroni": false
+      },
+      "fl_fedprox_alpha0.5_dp2.0_bert": {
+        "statistic": 1.0,
+        "p_value": 0.5,
+        "n_pairs": 3,
+        "significant_at_05": false,
+        "p_value_bonferroni": 1.0,
+        "significant_at_05_bonferroni": false
+      },
+      "fl_fedprox_alpha0.5_nodp_bert": {
+        "statistic": 0.0,
+        "p_value": 0.25,
+        "n_pairs": 3,
+        "significant_at_05": false,
+        "p_value_bonferroni": 1.0,
+        "significant_at_05_bonferroni": false
+      }
+    }
+  },
+  "llm": {
+    "primary_metric": "eval_perplexity",
+    "baseline": "fl_fedavg_alpha0.5_nodp_llm",
+    "configs": {
+      "fl_fedavg_alpha0.5_nodp_llm": {
+        "ci": "66.4863 \u00b1 0.6426 [95% CI: 65.9292\u201367.0643] (n=3)",
+        "mean": 66.48629999999999,
+        "ci_lower": 65.9292,
+        "ci_upper": 67.0643
+      },
+      "fl_fedprox_alpha0.5_dp0.5_llm": {
+        "ci": "140.4550 \u00b1 0.2190 [95% CI: 140.2316\u2013140.5713] (n=3)",
+        "mean": 140.455,
+        "ci_lower": 140.2316,
+        "ci_upper": 140.5713
+      },
+      "fl_fedprox_alpha0.5_dp1.0_llm": {
+        "ci": "140.3850 \u00b1 0.4575 [95% CI: 140.0005\u2013140.8065] (n=3)",
+        "mean": 140.38503333333333,
+        "ci_lower": 140.0005,
+        "ci_upper": 140.8065
+      },
+      "fl_fedprox_alpha0.5_dp2.0_llm": {
+        "ci": "140.5242 \u00b1 0.3853 [95% CI: 140.1577\u2013140.8307] (n=3)",
+        "mean": 140.52423333333334,
+        "ci_lower": 140.1577,
+        "ci_upper": 140.8307
+      },
+      "fl_fedprox_alpha0.5_nodp_llm": {
+        "ci": "66.3490 \u00b1 1.3208 [95% CI: 65.0745\u201367.3658] (n=3)",
+        "mean": 66.34903333333334,
+        "ci_lower": 65.0745,
+        "ci_upper": 67.3658
+      }
+    },
+    "comparisons_vs_baseline": {
+      "fl_fedprox_alpha0.5_dp0.5_llm": {
+        "statistic": 0.0,
+        "p_value": 0.25,
+        "n_pairs": 3,
+        "significant_at_05": false,
+        "p_value_bonferroni": 1.0,
+        "significant_at_05_bonferroni": false
+      },
+      "fl_fedprox_alpha0.5_dp1.0_llm": {
+        "statistic": 0.0,
+        "p_value": 0.25,
+        "n_pairs": 3,
+        "significant_at_05": false,
+        "p_value_bonferroni": 1.0,
+        "significant_at_05_bonferroni": false
+      },
+      "fl_fedprox_alpha0.5_dp2.0_llm": {
+        "statistic": 0.0,
+        "p_value": 0.25,
+        "n_pairs": 3,
+        "significant_at_05": false,
+        "p_value_bonferroni": 1.0,
+        "significant_at_05_bonferroni": false
+      },
+      "fl_fedprox_alpha0.5_nodp_llm": {
+        "statistic": 3.0,
+        "p_value": 1.0,
+        "n_pairs": 3,
+        "significant_at_05": false,
+        "p_value_bonferroni": 1.0,
+        "significant_at_05_bonferroni": false
+      }
+    }
+  }
+}

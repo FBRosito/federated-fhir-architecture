@@ -1,3 +1,71 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Extensões YAML — evitam repetição nas definições dos silos AI.
+# As chaves x-* são ignoradas pelo Docker Compose e servem apenas como âncoras.
+# ─────────────────────────────────────────────────────────────────────────────
+
+x-ai-client-base: &ai-client-base
+  build:
+    context: .
+    dockerfile: ai_client/Dockerfile
+  env_file:
+    - .env
+  depends_on:
+    hapi_fhir:
+      condition: service_started
+    fl_server:
+      condition: service_healthy
+  volumes:
+    - ./etl_worker/data:/app/data:ro   # bind mount: label_index.json e bundles gerados no host
+    - model_cache:/root/.cache/huggingface
+    - gpu_sync:/var/gpu_sync    # arquivo de lock compartilhado entre silos
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+  networks:
+    - fl_net
+
+x-silo-env: &silo-env
+  FL_SERVER_ADDRESS: "fl-server:9091"
+  FHIR_SERVER_URL: "http://hapi-fhir:8080/fhir"
+  NVIDIA_VISIBLE_DEVICES: all
+  NVIDIA_DRIVER_CAPABILITIES: compute,utility
+  GPU_LOCK_PATH: "/var/gpu_sync/gpu.lock"
+  MAX_SEQ_LEN: "${MAX_SEQ_LEN:-512}"
+  FL_KEEP_MODEL_IN_VRAM: "${FL_KEEP_MODEL_IN_VRAM:-false}"
+  FL_MAX_EXAMPLES: "${FL_MAX_EXAMPLES:-0}"
+  FL_GRADIENT_ACCUM_STEPS: "${FL_GRADIENT_ACCUM_STEPS:-0}"
+  FL_BATCH_SIZE: "${FL_BATCH_SIZE:-8}"
+  FL_EVAL_ACCURACY: "${FL_EVAL_ACCURACY:-false}"
+  FL_TOP_K: "${FL_TOP_K:-5}"
+  FL_NOISE_MULTIPLIER: "${FL_NOISE_MULTIPLIER:-0.0}"
+  FL_TARGET_DELTA: "${FL_TARGET_DELTA:-1e-5}"
+  FL_DP_SUBSAMPLE_RATE: "${FL_DP_SUBSAMPLE_RATE:-0.1}"
+  FL_CALIBRATE_GRAD_NORM: "${FL_CALIBRATE_GRAD_NORM:-false}"
+  MODEL_BACKEND: "${MODEL_BACKEND:-llm}"
+  BERT_BENCHMARK: "${BERT_BENCHMARK:-full}"
+  FL_PROXIMAL_MU: "${FL_PROXIMAL_MU:-0.01}"
+  FL_SEED: "${FL_SEED:-42}"
+  FL_CALIB_OUTPUT: "${FL_CALIB_OUTPUT:-/tmp/grad_norm.json}"
+  MIMIC_HOSP_DIR: "${MIMIC_HOSP_DIR:-/physionet/mimiciv/3.1/hosp}"
+  MIMIC_NOTE_DIR: "${MIMIC_NOTE_DIR:-/physionet/mimic-iv-note/2.2/note}"
+  BERT_LABEL_INDEX_PATH: "${BERT_LABEL_INDEX_PATH:-/app/data/label_index.json}"
+  # Parallel GPU: true = silos rodam simultaneamente (seguro para modelos <3B).
+  # Defina FL_PARALLEL_GPU=false se usar modelo ≥3B ou se ocorrer OOM.
+  FL_PARALLEL_GPU: "${FL_PARALLEL_GPU:-true}"
+  # Dirichlet heterogeneity α sweep: 0.1 (high Non-IID) | 0.5 | 1.0 (near-IID)
+  ETL_DIRICHLET_ALPHA: "${ETL_DIRICHLET_ALPHA:-0.5}"
+  # TurboQuant: compresses LoRA deltas for gRPC transmission (bandwidth only, not VRAM)
+  FL_LORA_COMPRESS: "${FL_LORA_COMPRESS:-false}"
+  FL_COMPRESS_BITS: "${FL_COMPRESS_BITS:-4}"
+  # Base model precision: nf4 (default, ~500 MB VRAM) | fp16 | bf16 (~2.4 GB, no BitsAndBytes)
+  MODEL_BASE_PRECISION: "${MODEL_BASE_PRECISION:-nf4}"
+
+# ─────────────────────────────────────────────────────────────────────────────
+
 services:
 
   # ─────────────────────────────────────────────
@@ -10,14 +78,14 @@ services:
       - "8080:8080"
     environment:
       hapi.fhir.fhir_version: R4
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/fhir/metadata"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+    # hapiproject/hapi é distroless (sem shell, sem wget, sem curl).
+    # A espera pelo boot do HAPI é responsabilidade da lógica de retry em etl_pipeline.post_bundle.
+    # Alias "hapi-fhir" (com hífen) é obrigatório: Tomcat rejeita com HTML 400 qualquer
+    # Host header que contenha underscore (inválido por RFC 1123).
     networks:
-      - fl_net
+      fl_net:
+        aliases:
+          - hapi-fhir
 
   # ─────────────────────────────────────────────
   # FL Server — orquestrador Flower (SuperLink)
@@ -30,18 +98,28 @@ services:
     ports:
       - "9091:9091"   # gRPC SuperLink
       - "9092:9092"   # REST SuperLink (opcional)
+    restart: on-failure   # reinicia se crashar antes de receber o primeiro cliente
     environment:
       FL_SERVER_ADDRESS: "0.0.0.0:9091"
-      FL_MIN_CLIENTS: "1"
-      FL_NUM_ROUNDS: "5"
+      FL_MIN_CLIENTS: "${FL_MIN_CLIENTS:-5}"
+      FL_NUM_ROUNDS: "${FL_NUM_ROUNDS:-10}"
+      FL_ROUND_TIMEOUT: "32400"   # 9h — com silos paralelos um round leva ~30 min; sequencial ~1h
+      FL_NOISE_MULTIPLIER: "${FL_NOISE_MULTIPLIER:-0}"   # DP desabilitado por padrão: σ=0.1 destrói adaptadores LoRA (~0.05 norma) com ruído 200× maior que o sinal; use FL_NOISE_MULTIPLIER=0.001 para DP simbólico
+      FL_LEARNING_RATE: "${FL_LEARNING_RATE:-5e-5}"
+      FL_STRATEGY: "${FL_STRATEGY:-fedprox}"
+      FL_NUM_EPOCHS: "${FL_NUM_EPOCHS:-1}"
+      FL_EVAL_ACCURACY: "${FL_EVAL_ACCURACY:-false}"
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; s=socket.create_connection(('localhost', 9091), 2)"]
       interval: 15s
       timeout: 5s
       retries: 6
       start_period: 20s
+    # Alias com hífen obrigatório: C-ares (gRPC) rejeita hostnames com underscore (RFC 1123).
     networks:
-      - fl_net
+      fl_net:
+        aliases:
+          - fl-server
 
   # ─────────────────────────────────────────────
   # ETL Worker — extração e transformação FHIR
@@ -52,49 +130,68 @@ services:
       dockerfile: etl_worker/Dockerfile
     container_name: etl_worker
     environment:
-      FHIR_SERVER_URL: "http://hapi_fhir:8080/fhir"
+      FHIR_SERVER_URL: "http://hapi-fhir:8080/fhir"
+      ETL_BUNDLES_PATH: "/app/etl_worker/data/bundles"
+      ETL_DIRICHLET_ALPHA: "${ETL_DIRICHLET_ALPHA:-0.5}"
+      PYTHONUNBUFFERED: "1"   # força flush imediato — sem TTY Python bufferiza stdout/stderr
     depends_on:
       hapi_fhir:
-        condition: service_healthy
+        condition: service_started
     volumes:
-      - etl_data:/app/data
+      - ./etl_worker/data:/app/etl_worker/data   # bind mount: acesso aos bundles gerados no host
     networks:
       - fl_net
 
   # ─────────────────────────────────────────────
-  # AI Client — cliente Flower com GPU (NVIDIA)
+  # AI Clients — 5 silos federados com GPU
+  #
+  # Todos os silos compartilham a mesma GPU (RTX 3060 12 GB). O volume
+  # "gpu_sync" fornece o arquivo de lock (fcntl.flock) que serializa o
+  # acesso — apenas um silo usa a GPU por vez. FL_PARALLEL_GPU=false
+  # garante a serialização quando o modelo base > 3B.
+  #
+  # Particionamento Dirichlet(α): gerado pelo mimic_builder.py com
+  #   --n-silos 5 --dirichlet-alpha <α>
+  # Silo 0..4 → partições 0..4 (heterogeneidade controlada por α)
   # ─────────────────────────────────────────────
-  ai_client:
-    build:
-      context: .
-      dockerfile: ai_client/Dockerfile
-    container_name: ai_client
+  ai_client_silo_0:
+    <<: *ai-client-base
+    container_name: ai_client_silo_0
     environment:
-      FL_SERVER_ADDRESS: "fl_server:9091"
-      FHIR_SERVER_URL: "http://hapi_fhir:8080/fhir"
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
-    depends_on:
-      hapi_fhir:
-        condition: service_healthy
-      fl_server:
-        condition: service_healthy
-    volumes:
-      - etl_data:/app/data:ro
-      - model_cache:/root/.cache/huggingface
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-    networks:
-      - fl_net
+      <<: *silo-env
+      ETL_PARTITION_ID: "0"
+
+  ai_client_silo_1:
+    <<: *ai-client-base
+    container_name: ai_client_silo_1
+    environment:
+      <<: *silo-env
+      ETL_PARTITION_ID: "1"
+
+  ai_client_silo_2:
+    <<: *ai-client-base
+    container_name: ai_client_silo_2
+    environment:
+      <<: *silo-env
+      ETL_PARTITION_ID: "2"
+
+  ai_client_silo_3:
+    <<: *ai-client-base
+    container_name: ai_client_silo_3
+    environment:
+      <<: *silo-env
+      ETL_PARTITION_ID: "3"
+
+  ai_client_silo_4:
+    <<: *ai-client-base
+    container_name: ai_client_silo_4
+    environment:
+      <<: *silo-env
+      ETL_PARTITION_ID: "4"
 
 volumes:
-  etl_data:
   model_cache:
+  gpu_sync:     # arquivo de lock para serialização do acesso à GPU entre silos
 
 networks:
   fl_net:

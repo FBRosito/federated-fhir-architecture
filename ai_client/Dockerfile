@@ -3,23 +3,23 @@
 # Requer NVIDIA Container Toolkit instalado no host.
 # Build context: raiz do workspace (docker-compose usa context: .)
 # ─────────────────────────────────────────────────────────────────────────────
-FROM nvidia/cuda:12.4.1-cudnn9-runtime-ubuntu22.04
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
 
 # ── Sistema base ──────────────────────────────────────────────────────────────
+# Ubuntu 22.04 não distribui Python 3.13 via apt; o uv instala o interpretador
+# standalone a partir dos builds gerenciados pela Astral (sem PPA necessário).
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        python3.13 \
-        python3.13-venv \
-        python3-pip \
         curl \
         ca-certificates \
+        gcc \
+        g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Instala uv (gerencia o venv e as deps sem depender do pip do sistema)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
-# Garante que uv use o Python 3.13 do sistema
-ENV UV_PYTHON=/usr/bin/python3.13
+# uv gerencia o Python 3.13 standalone — não depende de python3 do sistema
+ENV UV_PYTHON_PREFERENCE=managed
 
 WORKDIR /app
 
@@ -35,11 +35,12 @@ RUN uv sync --frozen --no-install-project --no-dev
 
 # ── Código-fonte ──────────────────────────────────────────────────────────────
 COPY ai_client/ ai_client/
+COPY evaluation/ evaluation/
 
-RUN uv sync --frozen --package ai-client --no-dev
+RUN uv sync --frozen --package ai-client --package evaluation --no-dev
 
 # Variáveis de ambiente NVIDIA exigidas pelo Container Toolkit
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
-CMD ["uv", "run", "ai-client"]
+CMD ["/app/.venv/bin/ai-client"]

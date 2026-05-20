@@ -21,7 +21,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
-import requests
+import httpx
 
 log = logging.getLogger(__name__)
 
@@ -94,7 +94,7 @@ def _next_link(bundle: dict[str, Any]) -> str | None:
 
 
 def _iter_bundle_entries(
-    session: requests.Session,
+    session: httpx.Client,
     url: str,
     params: dict[str, Any],
 ) -> list[dict[str, Any]]:
@@ -151,7 +151,7 @@ def _extract_icd10(condition: dict[str, Any]) -> tuple[str, str] | None:
 def get_conditions(
     fhir_url: str,
     patient_id: str | None = None,
-    session: requests.Session | None = None,
+    session: httpx.Client | None = None,
 ) -> dict[str, tuple[str, str, str]]:
     """
     Recupera recursos Condition do servidor HAPI FHIR.
@@ -159,7 +159,7 @@ def get_conditions(
     Args:
         fhir_url:   URL base do servidor (ex.: "http://localhost:8080/fhir").
         patient_id: Se fornecido, filtra apenas as Conditions do paciente.
-        session:    Sessão HTTP a reutilizar (criada internamente se None).
+        session:    Client HTTP a reutilizar (criado internamente se None).
 
     Returns:
         Dicionário `{patient_ref: (condition_id, icd10_code, icd10_display)}`.
@@ -167,7 +167,7 @@ def get_conditions(
         Quando múltiplas Conditions existem para o mesmo paciente, a primeira
         (por ordem de chegada) prevalece — adequado para o cenário one-label FL.
     """
-    sess = session or requests.Session()
+    sess = session or httpx.Client()
     params: dict[str, Any] = {"_count": _DEFAULT_PAGE_SIZE}
     if patient_id:
         params["subject"] = f"Patient/{patient_id}"
@@ -219,7 +219,7 @@ def _decode_attachment(content_list: list[dict]) -> str | None:
 def get_document_references(
     fhir_url: str,
     patient_id: str | None = None,
-    session: requests.Session | None = None,
+    session: httpx.Client | None = None,
 ) -> dict[str, tuple[str, str]]:
     """
     Recupera recursos DocumentReference do servidor HAPI FHIR.
@@ -227,14 +227,14 @@ def get_document_references(
     Args:
         fhir_url:   URL base do servidor.
         patient_id: Filtra por paciente específico (opcional).
-        session:    Sessão HTTP reutilizável.
+        session:    Client HTTP reutilizável.
 
     Returns:
         Dicionário `{patient_ref: (doc_ref_id, clinical_text)}`.
         Apenas DocumentReferences com attachment text/* decodificável são incluídos.
         Quando múltiplos documentos existem para o mesmo paciente, o primeiro prevalece.
     """
-    sess = session or requests.Session()
+    sess = session or httpx.Client()
     params: dict[str, Any] = {"_count": _DEFAULT_PAGE_SIZE}
     if patient_id:
         params["subject"] = f"Patient/{patient_id}"
@@ -288,21 +288,19 @@ def fetch_training_examples(
     stats = FHIRConsumerStats()
     examples: list[TrainingExample] = []
 
-    with requests.Session() as session:
-        session.headers.update({
-            "Accept": "application/fhir+json",
-            "Content-Type": "application/fhir+json",
-        })
-
+    with httpx.Client(headers={
+        "Accept": "application/fhir+json",
+        "Content-Type": "application/fhir+json",
+    }) as session:
         try:
             conditions  = get_conditions(fhir_url, patient_id, session)
             doc_refs    = get_document_references(fhir_url, patient_id, session)
-        except requests.ConnectionError:
+        except httpx.ConnectError:
             msg = f"Sem conexão com FHIR em {fhir_url}. Verifique se o container hapi_fhir está no ar."
             log.error(msg)
             stats.warnings.append(msg)
             return [], stats
-        except requests.HTTPError as exc:
+        except httpx.HTTPStatusError as exc:
             msg = f"HTTP {exc.response.status_code} ao consultar FHIR: {exc.response.text[:200]}"
             log.error(msg)
             stats.warnings.append(msg)

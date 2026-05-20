@@ -3,18 +3,8 @@ name = "fl-fhir-architecture"
 version = "0.1.0"
 description = "Federated Learning over FHIR data — microservices workspace"
 readme = "README.md"
-requires-python = ">=3.13"
-dependencies = [
-    "bitsandbytes",
-    "fhir-resources>=8.2.0",
-    "flwr>=1.27.0",
-    "pandas>=3.0.1",
-    "peft>=0.18.1",
-    "requests>=2.33.0",
-    "scikit-learn>=1.8.0",
-    "torch>=2.11.0",
-    "transformers>=5.4.0",
-]
+requires-python = ">=3.13,<3.14"
+dependencies = []
 
 [tool.uv.workspace]
 members = [

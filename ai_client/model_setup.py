@@ -17,7 +17,7 @@ Requisitos de hardware:
     - bitsandbytes ≥ 0.43 instalado no ambiente CUDA.
 
 Variáveis de ambiente:
-    MODEL_NAME      ID HuggingFace do modelo base (default: meta-llama/Meta-Llama-3-8B-Instruct)
+    MODEL_NAME      ID HuggingFace do modelo base (default: meta-llama/Llama-3.1-8B)
     HF_TOKEN        Token de acesso HuggingFace (necessário para modelos gated)
     MAX_SEQ_LEN     Comprimento máximo de sequência para tokenização (default: 512)
 """
@@ -25,6 +25,7 @@ Variáveis de ambiente:
 from __future__ import annotations
 
 import logging
+import math
 import os
 from dataclasses import dataclass, field
 from typing import Any
@@ -56,7 +57,7 @@ log = logging.getLogger(__name__)
 
 # ── Constantes e defaults ─────────────────────────────────────────────────────
 
-DEFAULT_MODEL_NAME = "meta-llama/Meta-Llama-3-8B-Instruct"
+DEFAULT_MODEL_NAME = "meta-llama/Llama-3.1-8B"
 DEFAULT_MAX_SEQ_LEN = int(os.getenv("MAX_SEQ_LEN", "512"))
 
 # Módulos de atenção e FFN do Llama-3 que receberão adaptadores LoRA.
@@ -256,7 +257,15 @@ class ClinicalICD10Dataset(Dataset):
     ) -> None:
         self.tokenizer  = tokenizer
         self.max_length = max_length
-        self.items      = [self._tokenize(ex) for ex in examples]
+        raw_items = [self._tokenize(ex) for ex in examples]
+        self.items = [item for item in raw_items if item is not None]
+        n_dropped = len(raw_items) - len(self.items)
+        if n_dropped:
+            log.warning(
+                "Dataset: %d/%d exemplos descartados — resposta truncada pelo "
+                "max_length=%d. Aumente MAX_SEQ_LEN ou reduza o texto clínico.",
+                n_dropped, len(raw_items), max_length,
+            )
         log.info("Dataset criado: %d exemplos, max_length=%d", len(self.items), max_length)
 
     def _tokenize(self, example: TrainingExample) -> dict[str, torch.Tensor]:
@@ -288,6 +297,10 @@ class ClinicalICD10Dataset(Dataset):
         labels[:prefix_len] = -100
         # Também ignora o padding
         labels[attention_mask == 0] = -100
+
+        # Truncagem pode cortar toda a resposta; sem tokens ativos outputs.loss=NaN
+        if (labels != -100).sum() == 0:
+            return None
 
         return {
             "input_ids":      input_ids,
@@ -366,7 +379,11 @@ def train_one_round(
 
     total_steps = len(dataloader) * train_cfg.num_epochs // train_cfg.gradient_accum_steps
     warmup_steps = max(1, int(total_steps * train_cfg.warmup_ratio))
-    scheduler = CosineAnnealingLR(optimizer, T_max=max(1, total_steps - warmup_steps))
+    scheduler = CosineAnnealingLR(
+        optimizer,
+        T_max=max(1, total_steps - warmup_steps),
+        eta_min=train_cfg.learning_rate * 0.1,
+    )
 
     # AMP: bfloat16 em Ampere+; float16 como fallback
     amp_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
@@ -374,14 +391,15 @@ def train_one_round(
 
     model.train()
     cumulative_loss  = 0.0
-    total_tokens     = 0
     global_step      = 0
     optimizer.zero_grad()
 
     for epoch in range(train_cfg.num_epochs):
-        epoch_loss = 0.0
+        epoch_loss    = 0.0
+        valid_batches = 0
+        accum_count   = 0
+
         for step, batch in enumerate(dataloader):
-            # Move batch para o device do modelo
             device = next(model.parameters()).device
             input_ids      = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
@@ -393,28 +411,34 @@ def train_one_round(
                     attention_mask = attention_mask,
                     labels         = labels,
                 )
-                # Normaliza a loss pelo número de tokens reais (não -100) para
-                # que o gradient accumulation produza o mesmo resultado independente
-                # do tamanho do batch
-                num_active = (labels != -100).sum().item()
-                loss = outputs.loss * (labels.shape[-1] / max(num_active, 1))
-                loss_scaled = loss / train_cfg.gradient_accum_steps
+                loss_scaled = outputs.loss / train_cfg.gradient_accum_steps
+
+            raw_loss = outputs.loss.item()
+            if not math.isfinite(raw_loss):
+                log.warning("Loss não-finita (%.4g) no step %d — batch ignorado.", raw_loss, step)
+                continue
 
             scaler.scale(loss_scaled).backward()
+            epoch_loss    += raw_loss
+            valid_batches += 1
+            accum_count   += 1
 
-            epoch_loss  += loss.item()
-            total_tokens += max(num_active, 1)
-
-            # Atualização dos pesos a cada `gradient_accum_steps` mini-batches
-            if (step + 1) % train_cfg.gradient_accum_steps == 0:
+            if accum_count % train_cfg.gradient_accum_steps == 0:
                 scaler.unscale_(optimizer)
-                torch.nn.utils.clip_grad_norm_(
+                total_norm = torch.nn.utils.clip_grad_norm_(
                     filter(lambda p: p.requires_grad, model.parameters()),
                     train_cfg.max_grad_norm,
                 )
-                scaler.step(optimizer)
+                if math.isfinite(total_norm):
+                    scaler.step(optimizer)
+                else:
+                    log.warning(
+                        "Grad norm não-finita (%.4g) no global_step %d — optimizer step pulado.",
+                        float(total_norm), global_step,
+                    )
                 scaler.update()
                 optimizer.zero_grad()
+                accum_count = 0
 
                 if global_step >= warmup_steps:
                     scheduler.step()
@@ -423,10 +447,23 @@ def train_one_round(
                 if global_step % 10 == 0:
                     log.info(
                         "Epoch %d/%d | step %d | loss=%.4f",
-                        epoch + 1, train_cfg.num_epochs, global_step, epoch_loss / (step + 1),
+                        epoch + 1, train_cfg.num_epochs, global_step,
+                        epoch_loss / max(valid_batches, 1),
                     )
 
-        avg_epoch_loss = epoch_loss / max(len(dataloader), 1)
+        if accum_count > 0:
+            scaler.unscale_(optimizer)
+            total_norm = torch.nn.utils.clip_grad_norm_(
+                filter(lambda p: p.requires_grad, model.parameters()),
+                train_cfg.max_grad_norm,
+            )
+            if math.isfinite(total_norm):
+                scaler.step(optimizer)
+            scaler.update()
+            optimizer.zero_grad()
+            global_step += 1
+
+        avg_epoch_loss = epoch_loss / max(valid_batches, 1)
         log.info("Epoch %d/%d concluída — loss média: %.4f", epoch + 1, train_cfg.num_epochs, avg_epoch_loss)
         cumulative_loss += avg_epoch_loss
 

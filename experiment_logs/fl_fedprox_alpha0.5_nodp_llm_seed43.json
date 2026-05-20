@@ -1,0 +1,61 @@
+{
+  "tag": "fl_fedprox_alpha0.5_nodp_llm_seed43",
+  "completed_at": "2026-05-05T12:15:52.325831Z",
+  "config": {
+    "backend": "llm",
+    "strategy": "fedprox",
+    "noise_multiplier": 0.0,
+    "n_silos": 5,
+    "seed": 43,
+    "num_rounds": 2,
+    "proximal_mu": 0.01
+  },
+  "per_round_eval": [
+    {
+      "eval_perplexity": 101.8637,
+      "eval_loss": 4.4899,
+      "eval_prec_at_5": 0.0,
+      "eval_acc_at_5": 0.0,
+      "eval_icd10_accuracy": 0.0,
+      "partition_id": 2.2,
+      "eval_f1_at_5": 0.0,
+      "eval_recall_at_5": 0.0,
+      "server_round": 1.0,
+      "proximal_mu": 0.01,
+      "lora_b_drift_ratio": 10337474.8277,
+      "lora_b_norm_end": 0.0103,
+      "train_loss": 4.7317
+    },
+    {
+      "eval_prec_at_5": 0.0,
+      "eval_loss": 4.0933,
+      "eval_perplexity": 67.3658,
+      "eval_acc_at_5": 0.0,
+      "eval_icd10_accuracy": 0.0,
+      "eval_f1_at_5": 0.0,
+      "partition_id": 2.2,
+      "eval_recall_at_5": 0.0,
+      "server_round": 2.0,
+      "proximal_mu": 0.01,
+      "lora_b_drift_ratio": 2.1412,
+      "lora_b_norm_end": 0.0167,
+      "train_loss": 4.4165
+    }
+  ],
+  "final_metrics": {
+    "eval_prec_at_5": 0.0,
+    "eval_loss": 4.0933,
+    "eval_perplexity": 67.3658,
+    "eval_acc_at_5": 0.0,
+    "eval_icd10_accuracy": 0.0,
+    "eval_f1_at_5": 0.0,
+    "partition_id": 2.2,
+    "eval_recall_at_5": 0.0,
+    "server_round": 2.0,
+    "proximal_mu": 0.01,
+    "lora_b_drift_ratio": 2.1412,
+    "lora_b_norm_end": 0.0167,
+    "train_loss": 4.4165
+  },
+  "n_rounds_completed": 2
+}

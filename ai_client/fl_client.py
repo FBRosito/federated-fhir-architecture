@@ -65,7 +65,7 @@ log = logging.getLogger(__name__)
 _FHIR_URL     = os.getenv("FHIR_SERVER_URL",   "http://localhost:8080/fhir")
 _FL_ADDRESS   = os.getenv("FL_SERVER_ADDRESS",  "fl_server:9091")
 _PARTITION_ID = int(os.getenv("ETL_PARTITION_ID", "-1"))
-_MODEL_NAME   = os.getenv("MODEL_NAME",          "meta-llama/Meta-Llama-3-8B-Instruct")
+_MODEL_NAME   = os.getenv("MODEL_NAME",          "meta-llama/Llama-3.1-8B")
 _MAX_SEQ_LEN  = int(os.getenv("MAX_SEQ_LEN",     "512"))
 _EVAL_ACCURACY = os.getenv("FL_EVAL_ACCURACY",   "false").lower() == "true"
 

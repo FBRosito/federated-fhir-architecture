@@ -27,4 +27,4 @@ COPY etl_worker/ etl_worker/
 
 RUN uv sync --frozen --package etl-worker --no-dev
 
-CMD ["uv", "run", "etl-worker"]
+CMD ["/app/.venv/bin/etl-worker"]
