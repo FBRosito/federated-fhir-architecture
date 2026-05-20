@@ -10,7 +10,23 @@ Step-by-step: GitHub commit → cloud VM → MIMIC-IV data → full experiments.
 - [ ] HuggingFace token with Llama-3 access
 - [ ] PhysioNet account with MIMIC-IV and MIMIC-IV-Note approved access
 - [ ] SSH key pair for the cloud VM
-- [ ] ~200 GB disk on the cloud VM (MIMIC ~80 GB + Docker images ~20 GB + model cache ~15 GB)
+- [ ] ~50 GB disk on the cloud VM (MIMIC files ~4.5 GB + Docker images ~20 GB + model cache ~1.5 GB + HAPI DB ~3 GB)
+
+---
+
+## Cost summary
+
+| Phase | Where | Est. time | Cost (Lambda $1.29/h) |
+|-------|-------|-----------|----------------------|
+| Setup + MIMIC scp + build-mimic | Cloud | ~1.5 h | ~$2 |
+| `docker compose build` + `make up-infra` | Cloud | ~30 min | ~$0.65 |
+| `run_experiments.sh --exp all` | Cloud | ~16 h | ~$20 |
+| **Shut down instance** | — | — | — |
+| Post-processing + LLM judge | **Local** | ~1 h | $0 (only OpenRouter tokens) |
+| **Total cloud** | | **~18 h** | **~$23** |
+
+> **Key rule:** shut down the instance the moment `run_experiments.sh` finishes.
+> Post-processing, LLM judge, statistical analysis, and plots all run locally.
 
 ---
 
@@ -182,6 +198,27 @@ uv sync --frozen
 
 ## Step 4 — Download MIMIC-IV
 
+**If you already have MIMIC-IV locally (recommended — faster and no PhysioNet re-download):**
+
+```bash
+# From your LOCAL machine — copy directly to the instance (~4.5 GB, ~5–10 min):
+REMOTE="ubuntu@<INSTANCE_IP>"
+
+ssh $REMOTE "mkdir -p ~/physionet.org/files/mimiciv/3.1/hosp ~/physionet.org/files/mimic-iv-note/2.2/note"
+
+scp physionet.org/files/mimiciv/3.1/hosp/{diagnoses_icd,d_icd_diagnoses,admissions,patients,services,procedures_icd,d_icd_procedures,prescriptions,microbiologyevents,labevents}.csv.gz \
+    $REMOTE:~/physionet.org/files/mimiciv/3.1/hosp/
+
+scp physionet.org/files/mimic-iv-note/2.2/note/discharge.csv.gz \
+    $REMOTE:~/physionet.org/files/mimic-iv-note/2.2/note/
+```
+
+Skip to Step 4.3 after the scp completes.
+
+---
+
+**Alternative — download from PhysioNet** (only if you don't have the data locally):
+
 You need a PhysioNet account with approved access to both datasets:
 - MIMIC-IV v3.1: https://physionet.org/content/mimiciv/3.1/
 - MIMIC-IV-Note v2.2: https://physionet.org/content/mimic-iv-note/2.2/
@@ -190,7 +227,6 @@ You need a PhysioNet account with approved access to both datasets:
 
 ```bash
 mkdir -p ~/physionet.org/files/mimiciv/3.1/hosp
-mkdir -p ~/physionet.org/files/mimiciv/3.1/icu
 mkdir -p ~/physionet.org/files/mimic-iv-note/2.2/note
 ```
 
@@ -203,29 +239,16 @@ NOTE="https://physionet.org/files/mimic-iv-note/2.2/note"
 
 cd ~/physionet.org/files/mimiciv/3.1/hosp
 
-# Core tables (required for Experiment A — ICD-10 coding)
 for f in diagnoses_icd.csv.gz d_icd_diagnoses.csv.gz admissions.csv.gz \
           patients.csv.gz services.csv.gz procedures_icd.csv.gz \
-          d_icd_procedures.csv.gz prescriptions.csv.gz; do
+          d_icd_procedures.csv.gz prescriptions.csv.gz \
+          microbiologyevents.csv.gz labevents.csv.gz; do
   wget -N --user "$PUSER" --ask-password "$HOSP/$f"
 done
 
-# Discharge notes (required for Experiment B — discharge summary)
 cd ~/physionet.org/files/mimic-iv-note/2.2/note
 wget -N --user "$PUSER" --ask-password "$NOTE/discharge.csv.gz"
-
-# Check sizes
-du -sh ~/physionet.org/files/mimiciv/3.1/hosp/
-du -sh ~/physionet.org/files/mimic-iv-note/2.2/note/
 ```
-
-> **Optional — ICU vitals** (adds ~50 GB, used only for synthetic narratives):
-> ```bash
-> cd ~/physionet.org/files/mimiciv/3.1/icu
-> wget -N --user "$PUSER" --ask-password \
->   https://physionet.org/files/mimiciv/3.1/icu/icustays.csv.gz \
->   https://physionet.org/files/mimiciv/3.1/icu/chartevents.csv.gz
-> ```
 
 ### 4.3 Update .env with the correct path
 
@@ -345,72 +368,96 @@ ls experiment_logs/*.json 2>/dev/null | wc -l
 
 ---
 
-## Step 8 — Retrieve results
+## Step 8 — Retrieve results and SHUT DOWN the instance
 
-### 8.1 Download all results to local machine
+> **Cost rule: shut down the instance as soon as `run_experiments.sh` finishes.
+> Everything after this step runs on your local machine — no GPU needed.**
 
-```bash
-# From your LOCAL machine:
-REMOTE="ubuntu@<INSTANCE_IP>"
-REPO="federated-fhir-architecture"
-
-# Pack on remote first
-ssh $REMOTE "cd $REPO && make logs-pack"
-
-# Download
-scp $REMOTE:~/$REPO/experiment_logs.tar.gz ./
-tar -xzf experiment_logs.tar.gz
-ls experiment_logs/*.json | wc -l   # expect 38
-```
-
-### 8.2 Inspect results
+### 8.1 Pack and download results
 
 ```bash
-# Summary of final metrics for all runs
-python3 - <<'EOF'
-import json, glob, os
-rows = []
-for path in sorted(glob.glob("experiment_logs/*.json")):
-    try:
-        d = json.load(open(path))
-        tag = d.get("tag", os.path.basename(path))
-        fm  = d.get("final_metrics", {})
-        rows.append((tag, fm))
-    except Exception:
-        pass
-for tag, fm in rows:
-    print(f"{tag:60s}  {fm}")
-EOF
-```
+# On the CLOUD VM — pack results:
+cd ~/federated-fhir-architecture
+make logs-pack   # creates experiment_logs.tar.gz
 
-### 8.3 Commit results to git
-
-```bash
-# On the cloud VM:
+# Commit JSONs to git (optional but recommended as backup):
 git add experiment_logs/*.json
 git commit -m "results: full experimental matrix — bert+llm, 3 seeds, all DP configs"
 git push origin main
+```
 
-# Pull locally:
-git pull origin main
+```bash
+# From your LOCAL machine — download:
+REMOTE="ubuntu@<INSTANCE_IP>"
+scp $REMOTE:~/federated-fhir-architecture/experiment_logs.tar.gz ./
+tar -xzf experiment_logs.tar.gz
+ls experiment_logs/*.json | wc -l   # expect ~38
+```
+
+### 8.2 SHUT DOWN the instance
+
+**Do this immediately after the download completes.** The instance charges by the hour even when idle.
+
+- Lambda Labs: dashboard → Instances → Terminate
+- Or via CLI: `ssh $REMOTE "sudo shutdown now"`
+
+### 8.3 Quick results check (local)
+
+```bash
+python3 - <<'EOF'
+import json, glob, os
+for path in sorted(glob.glob("experiment_logs/*.json")):
+    try:
+        d = json.load(open(path))
+        print(f"{d.get('tag','?'):60s}  {d.get('final_metrics',{})}")
+    except Exception:
+        pass
+EOF
 ```
 
 ---
 
-## Step 9 — Post-evaluation (Experiment B only)
+## Step 9 — Post-processing (runs entirely LOCAL — no GPU, no cloud cost)
 
-After the FL run with `MODEL_BACKEND=llm-summarization` and `FL_SAVE_CHECKPOINT` set:
+All post-processing runs on your local machine. No instance needed.
+
+### 9.1 Statistical analysis + plots
 
 ```bash
-# On the cloud VM, after the LLM run completes:
-python -m evaluation.post_eval \
-  --run-json experiment_logs/fl_fedprox_alpha0.5_nodp_llm_seed42.json \
-  --checkpoint /tmp/checkpoints/silo_0 \
-  --fhir-url http://localhost:8080/fhir \
-  --max-samples 50
+cd /path/to/federated-fhir-architecture
+uv sync --frozen
 
-# LLM-judge requires OPENROUTER_API_KEY:
+bash run_postprocessing.sh
+# Produces: experiment_logs/statistical_summary.json + experiment_logs/figures/*.pdf
+```
+
+### 9.2 LLM-as-a-Judge (Experiment B only — requires OpenRouter API key)
+
+The judge calls external APIs (Qwen-72B, Gemma-27B, DeepSeek-v3) — **no GPU required**.
+Cost is ~$0.01–0.05 per sample evaluated (OpenRouter pay-per-token).
+
+```bash
+# LOCAL machine — set your OpenRouter key:
 export OPENROUTER_API_KEY=sk-or-your_key_here
+
+# Run judge on the LLM results:
+bash run_postprocessing.sh --judge-only
+
+# Or directly:
+uv run python -m evaluation.llm_judge \
+  --results-dir experiment_logs/ \
+  --backend llm \
+  --max-samples 50
+```
+
+Get an OpenRouter key at: openrouter.ai/keys
+
+### 9.3 Pull results back to git
+
+```bash
+git add experiment_logs/*.json experiment_logs/figures/
+git commit -m "results: statistical summary + publication figures"
+git push origin main
 ```
 
 ---
