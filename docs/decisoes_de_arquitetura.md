@@ -1,84 +1,84 @@
-# Decisões de Arquitetura — FL-FHIR Architecture
+# Architecture Decision Records — FL-FHIR Architecture
 
-**Projeto:** Aprendizado Federado sobre Dados Clínicos no Padrão FHIR
-**Repositório:** `federated-fhir-architecture`
-**Versão do documento:** 3.0
-**Data:** 2026-05-20
-
----
-
-## Sumário
-
-1. [FedProx + Privacidade Diferencial Client-Side](#1-fedprox--privacidade-diferencial-client-side)
-   - 1.1 [O problema: dados Non-IID em ambientes hospitalares](#11-o-problema-dados-non-iid-em-ambientes-hospitalares)
-   - 1.2 [Por que FedProx e não FedAvg](#12-por-que-fedprox-e-não-fedavg)
-   - 1.3 [Por que DP-SGD client-side (Opacus)](#13-por-que-dp-sgd-client-side-opacus)
-   - 1.4 [Modelo de ameaça mitigado](#14-modelo-de-ameaça-mitigado)
-   - 1.5 [Limitações conhecidas](#15-limitações-conhecidas)
-2. [Llama-3 quantizado em 4-bits + LoRA](#2-llama-3-quantizado-em-4-bits--lora)
-   - 2.1 [A restrição de hardware como requisito de projeto](#21-a-restrição-de-hardware-como-requisito-de-projeto)
-   - 2.2 [Quantização NF4 via BitsAndBytes](#22-quantização-nf4-via-bitsandbytes)
-   - 2.3 [Por que LoRA e não fine-tuning completo](#23-por-que-lora-e-não-fine-tuning-completo)
-   - 2.4 [Configuração dos adaptadores LoRA](#24-configuração-dos-adaptadores-lora)
-   - 2.5 [Eficiência de comunicação no contexto federado](#25-eficiência-de-comunicação-no-contexto-federado)
-3. [Referências](#3-referências)
+**Project:** Federated Learning over Clinical Data in the FHIR Standard
+**Repository:** `federated-fhir-architecture`
+**Document version:** 3.0
+**Date:** 2026-05-20
 
 ---
 
-## 1. FedProx + Privacidade Diferencial Client-Side
+## Table of Contents
 
-### 1.1 O problema: dados Non-IID em ambientes hospitalares
+1. [FedProx + Client-Side Differential Privacy](#1-fedprox--client-side-differential-privacy)
+   - 1.1 [The problem: Non-IID data in hospital environments](#11-the-problem-non-iid-data-in-hospital-environments)
+   - 1.2 [Why FedProx and not FedAvg](#12-why-fedprox-and-not-fedavg)
+   - 1.3 [Why client-side DP-SGD (Opacus)](#13-why-client-side-dp-sgd-opacus)
+   - 1.4 [Threat model addressed](#14-threat-model-addressed)
+   - 1.5 [Known limitations](#15-known-limitations)
+2. [4-bit Quantised Llama-3 + LoRA](#2-4-bit-quantised-llama-3--lora)
+   - 2.1 [Hardware constraint as a design requirement](#21-hardware-constraint-as-a-design-requirement)
+   - 2.2 [NF4 quantisation via BitsAndBytes](#22-nf4-quantisation-via-bitsandbytes)
+   - 2.3 [Why LoRA and not full fine-tuning](#23-why-lora-and-not-full-fine-tuning)
+   - 2.4 [LoRA adapter configuration](#24-lora-adapter-configuration)
+   - 2.5 [Communication efficiency in the federated setting](#25-communication-efficiency-in-the-federated-setting)
+3. [References](#3-references)
 
-Dados clínicos reais não seguem distribuições i.i.d. entre instituições de saúde. O perfil diagnóstico de um hospital cardiológico é radicalmente diferente do de um centro de pneumologia ou de uma UPA de atendimento geral. No presente sistema, esse fenômeno é modelado explicitamente pelo `etl_worker`, que distribui os dados por especialidade médica:
+---
 
-| Partição | Perfil da Unidade | Predominância diagnóstica | Códigos CID-10 típicos |
+## 1. FedProx + Client-Side Differential Privacy
+
+### 1.1 The problem: Non-IID data in hospital environments
+
+Real-world clinical data does not follow i.i.d. distributions across healthcare institutions. The diagnostic profile of a cardiology hospital is radically different from that of a pulmonology centre or a general emergency unit. In this system, that phenomenon is explicitly modelled by the `etl_worker`, which partitions data by medical speciality:
+
+| Partition | Unit profile | Diagnostic prevalence | Typical ICD-10 codes |
 |---|---|---|---|
-| 0 | Hospital A — Cardiologia | Cardiovascular (70%) | I10, I50.0, I20.0, I63.9 |
-| 1 | Hospital B — Pneumologia | Respiratório (70%) | J44.1, J45.9, J18.9, I26.9 |
-| 2 | Centro C — Endocrinologia | Metabólico/Endócrino (70%) | E11.9, E03.9, E28.2, E21.0 |
-| 3 | UPA D — Geral | Distribuição uniforme | M54.5, N39.0, F32.9, N18.3 |
+| 0 | Hospital A — Cardiology | Cardiovascular (70%) | I10, I50.0, I20.0, I63.9 |
+| 1 | Hospital B — Pulmonology | Respiratory (70%) | J44.1, J45.9, J18.9, I26.9 |
+| 2 | Centre C — Endocrinology | Metabolic/Endocrine (70%) | E11.9, E03.9, E28.2, E21.0 |
+| 3 | Unit D — General | Uniform distribution | M54.5, N39.0, F32.9, N18.3 |
 
-Essa heterogeneidade não é um artefato de simulação — ela reflete a realidade de qualquer rede de saúde e é o principal desafio técnico do Aprendizado Federado aplicado à área médica.
+This heterogeneity is not a simulation artefact — it reflects the reality of any healthcare network and is the primary technical challenge of Federated Learning applied to the medical domain.
 
-### 1.2 Por que FedProx e não FedAvg
+### 1.2 Why FedProx and not FedAvg
 
-O **FedAvg** (McMahan et al., 2017) é o algoritmo de referência para FL. Ele assume que os gradientes dos clientes convergem, em média, para o gradiente do objetivo global. Essa premissa vale para dados i.i.d., mas **falha em distribuições Non-IID**: cada cliente otimiza uma função de perda local diferente, e a média simples dos gradientes pode apontar em direções conflitantes — fenômeno conhecido como *client drift*.
+**FedAvg** (McMahan et al., 2017) is the reference algorithm for FL. It assumes that client gradients converge, on average, to the gradient of the global objective. This assumption holds for i.i.d. data, but **breaks under Non-IID distributions**: each client optimises a different local loss function, and the simple average of gradients may point in conflicting directions — a phenomenon known as *client drift*.
 
-O **FedProx** (Li et al., 2020b) resolve isso adicionando um **termo proximal** à função de perda local de cada cliente:
+**FedProx** (Li et al., 2020b) addresses this by adding a **proximal term** to each client's local loss:
 
 ```
 L_FedProx(w) = L_local(w) + (μ/2) · ‖w − w_global‖²
 ```
 
-O efeito prático é que cada cliente é penalizado por se desviar excessivamente do modelo global. O hiperparâmetro μ controla a intensidade dessa restrição:
+The practical effect is that each client is penalised for deviating excessively from the global model. The hyperparameter μ controls the strength of this constraint:
 
-- μ → 0: degrada para FedAvg (sem restrição)
-- μ → ∞: clientes não atualizam (modelo global estático)
-- μ = 0.01 (valor adotado): permite adaptação local com estabilidade de convergência
+- μ → 0: degrades to FedAvg (no constraint)
+- μ → ∞: clients do not update (static global model)
+- μ = 0.01 (adopted value): allows local adaptation with convergence stability
 
-A escolha de μ=0.01 é conservadora e adequada ao grau de heterogeneidade moderado a alto do dataset. O valor é repassado aos clientes via `fit_config` a cada round, garantindo que o termo proximal seja aplicado corretamente pelo `ai_client` mesmo sem conhecer a configuração global do servidor.
+The choice of μ=0.01 is conservative and appropriate for the moderate-to-high degree of heterogeneity in the dataset. The value is forwarded to clients via `fit_config` at every round, ensuring the proximal term is correctly applied by the `ai_client` without requiring knowledge of the global server configuration.
 
-**Implementação no código:**
+**Code reference:**
 
 ```python
 # fl_server/server.py — build_base_strategy()
 return FedProx(proximal_mu=proximal_mu, **common_kwargs)
 ```
 
-### 1.3 Por que DP-SGD client-side (Opacus)
+### 1.3 Why client-side DP-SGD (Opacus)
 
-A Privacidade Diferencial é aplicada **no cliente**, antes de qualquer gradiente ou delta de peso sair do nó de borda. O mecanismo utiliza o Opacus (Yousefpour et al., 2021), que implementa DP-SGD com contabilização RDP:
+Differential Privacy is applied **at the client**, before any gradient or weight delta leaves the edge node. The mechanism uses Opacus (Yousefpour et al., 2021), which implements DP-SGD with RDP accounting:
 
-**1. Clipping por amostra:** durante a passagem backward, Opacus intercepta o gradiente de cada amostra individualmente e o projeta para norma máxima `C₀ = 1.0`. O valor `C₀` é fixado antes de qualquer contato com os dados, baseado nos resultados empíricos de Yu et al. (2022) e Anil et al. (2022) para modelos de linguagem com LoRA. Isso garante a **independência de dados** necessária para a garantia formal `(ε, δ)`-DP.
+**1. Per-sample clipping:** during the backward pass, Opacus intercepts each individual sample's gradient and projects it to maximum L2 norm `C₀ = 1.0`. The value of `C₀` is fixed before any contact with the data, based on the empirical results of Yu et al. (2022) and Anil et al. (2022) for LoRA-based language models. This ensures the **data independence** required for the formal `(ε, δ)`-DP guarantee.
 
-**2. Ruído Gaussiano:** após o clipping por amostra e a agregação dos gradientes no batch, é adicionado ruído calibrado `N(0, σ²C₀²I)` com `σ = noise_multiplier`. O ruído é injetado nos gradientes das camadas LoRA antes do passo de otimização.
+**2. Gaussian noise:** after per-sample clipping and gradient aggregation over the batch, calibrated noise `N(0, σ²C₀²I)` with `σ = noise_multiplier` is injected into the LoRA layer gradients **before the optimisation step**.
 
-**3. Exclusão do modelo base:** os pesos do modelo base (Llama-3 em NF4 4-bit ou PubMedBERT) têm `requires_grad=False` e são completamente excluídos do mecanismo DP — somente as camadas LoRA são protegidas, o que mantém o custo computacional proporcional ao tamanho do adaptador, não do modelo completo.
+**3. Base model exclusion:** the base model weights (Llama-3 in NF4 4-bit or PubMedBERT) have `requires_grad=False` and are fully excluded from the DP mechanism — only LoRA layers are protected, keeping the computational overhead proportional to the adapter size, not the full model.
 
-**4. Contabilização RDP:** o accountant RDP (Mironov, 2017) rastreia o orçamento de privacidade acumulado. O subsampling de Poisson com taxa `q = 0.1` por round permite amplificação de privacidade. O `epsilon_cumulative` reportado no JSON de resultados é o valor a citar no artigo.
+**4. RDP accounting:** the RDP accountant (Mironov, 2017) tracks the accumulated privacy budget. Poisson subsampling at rate `q = 0.1` per round enables privacy amplification. The `epsilon_cumulative` value reported in each result JSON is the figure to cite in the paper.
 
 ```python
-# ai_client/fl_client.py — aplicação do Opacus DP-SGD
+# ai_client/fl_client.py — Opacus DP-SGD application
 privacy_engine = PrivacyEngine()
 model, optimizer, train_loader = privacy_engine.make_private_with_epsilon(
     module=lora_model,
@@ -91,51 +91,51 @@ model, optimizer, train_loader = privacy_engine.make_private_with_epsilon(
 )
 ```
 
-**Por que client-side e não server-side?**
+**Why client-side and not server-side?**
 
-A DP server-side (adicionada *após* a agregação) não protege os gradientes individuais dos clientes enquanto estão em trânsito ou visíveis ao servidor — um servidor comprometido pode inspecionar os deltas antes de aplicar o ruído. Com DP client-side, o ruído já está incorporado no delta que sai do silo: mesmo que o servidor seja adversarial, ele recebe apenas gradientes privatizados. Essa é a garantia de privacidade mais forte no modelo de ameaça federado (Geyer et al., 2017; Wei et al., 2020).
+Server-side DP (added *after* aggregation) does not protect individual client gradients while they are in transit or visible to the server — a compromised server can inspect the deltas before applying noise. With client-side DP, noise is already embedded in the delta leaving the silo: even if the server is adversarial, it receives only privatised gradients. This is the strongest privacy guarantee under the federated threat model (Geyer et al., 2017; Wei et al., 2020).
 
-O servidor (`fl_server`) é um agregador FedProx limpo — não adiciona ruído e não precisa ser confiável para que a garantia DP valha.
+The `fl_server` is a clean FedProx aggregator — it adds no noise and does not need to be trusted for the DP guarantee to hold.
 
-### 1.4 Modelo de ameaça mitigado
+### 1.4 Threat model addressed
 
-**Ataques de inversão de gradiente (Gradient/Model Inversion):** dado acesso aos deltas LoRA enviados por um cliente, um adversário pode tentar reconstruir o texto clínico que os originou (Zhu et al., 2019). O ruído Gaussiano injetado client-side corrompe os gradientes antes de deixarem o silo, tornando a reconstrução inviável para σ ≥ 1.0 — conforme demonstrado nos experimentos de inversão em `evaluation/src/evaluation/run_gradient_inversion.py`.
+**Gradient/model inversion attacks:** given access to the LoRA deltas sent by a client, an adversary may attempt to reconstruct the clinical text that produced them (Zhu et al., 2019). The Gaussian noise injected client-side corrupts the gradients before they leave the silo, making reconstruction infeasible for σ ≥ 1.0 — as demonstrated by the inversion experiments in `evaluation/src/evaluation/run_gradient_inversion.py`.
 
-**Inferência de pertinência (Membership Inference):** um adversário tenta determinar se o registro de um paciente específico foi usado no treinamento. A garantia `(ε, δ)`-DP limita formalmente a vantagem do adversário. Com σ=0.9, 5 rounds e q=0.1, o ε cumulativo é da ordem de 4–5 (δ=1e-5), oferecendo proteção moderada a forte — adequada para dados clínicos anonimizados.
+**Membership inference:** an adversary attempts to determine whether a specific patient record was used in training. The `(ε, δ)`-DP guarantee formally bounds the adversary's advantage. With σ=0.9, 5 rounds, and q=0.1, the cumulative ε is approximately 4–5 (δ=1e-5), providing moderate-to-strong protection — appropriate for de-identified clinical data.
 
-**Servidor adversarial:** como o ruído é aplicado client-side, um servidor comprometido que inspecione os deltas recebidos apenas vê gradientes já privatizados — a garantia DP não depende da integridade do servidor.
+**Adversarial server:** because noise is applied client-side, a compromised server inspecting the received deltas sees only already-privatised gradients — the DP guarantee does not depend on the server's integrity.
 
-### 1.5 Limitações conhecidas
+### 1.5 Known limitations
 
-- **Secure Aggregation:** os deltas LoRA de cada cliente chegam ao servidor em texto claro (apenas privatizados por ruído). Para impedir que o servidor reconstrua contribuições individuais por diferença entre rounds, seria necessário Secure Aggregation criptográfica (Bonawitz et al., 2017). Essa extensão aumenta significativamente a complexidade operacional e está fora do escopo atual.
-- **Neighboring relation — admissão-nível:** a garantia DP cobre a adição/remoção de uma admissão hospitalar completa (todos os DocumentReference, Condition e Patient associados). Pacientes com múltiplas admissões contribuem independentemente — o que é conservador e formalmente correto, mas pode subestimar a exposição de pacientes com histórico clínico extenso.
-- **C₀ literatura vs. dados:** `C₀ = 1.0` é declarado antes de ver qualquer dado (garantia formal). O script de calibração (`FL_CALIBRATE_GRAD_NORM=true`) mede normas reais como verificação de sanidade; seu resultado não altera `C₀` em execuções formalmente DP.
+- **Secure Aggregation:** each client's LoRA delta arrives at the server in plaintext (protected only by noise). To prevent the server from reconstructing individual contributions by differencing across rounds, cryptographic Secure Aggregation would be required (Bonawitz et al., 2017). This extension significantly increases operational complexity and is outside the current scope.
+- **Neighbouring relation — admission-level:** the DP guarantee covers the addition or removal of a complete hospital admission (all associated DocumentReference, Condition, and Patient resources). Patients with multiple admissions contribute independently — which is conservative and formally correct, but may underestimate the exposure of patients with extensive clinical histories.
+- **C₀ literature vs. data:** `C₀ = 1.0` is declared before seeing any data (formal guarantee). The calibration script (`FL_CALIBRATE_GRAD_NORM=true`) measures real gradient norms as a sanity check; its output does not alter `C₀` in formally DP runs.
 
 ---
 
-## 2. Llama-3 quantizado em 4-bits + LoRA
+## 2. 4-bit Quantised Llama-3 + LoRA
 
-### 2.1 A restrição de hardware como requisito de projeto
+### 2.1 Hardware constraint as a design requirement
 
-O sistema é projetado para rodar **localmente em uma única GPU de 12 GB de VRAM**, sem depender de infraestrutura de nuvem. Essa restrição não é arbitrária: ela reflete o hardware disponível em instituições de saúde de médio porte e é o que torna o sistema implantável em cenários reais.
+The system is designed to run **locally on a single 12 GB VRAM GPU**, without relying on cloud infrastructure. This constraint is not arbitrary: it reflects the hardware available in mid-sized healthcare institutions and is what makes the system deployable in real-world scenarios.
 
-O Llama-3-8B em precisão completa (float32) ocupa ~32 GB de VRAM — inviável. A combinação de quantização 4-bit + LoRA reduz esse requisito para **~6–8 GB durante o treinamento**, dentro da margem da GPU de 12 GB.
+Llama-3-8B in full precision (float32) requires ~32 GB of VRAM — infeasible. The combination of 4-bit quantisation + LoRA reduces this requirement to **~6–8 GB during training**, within the margin of a 12 GB GPU.
 
-Estimativa do uso de VRAM:
+Estimated VRAM usage:
 
-| Componente | Precisão | VRAM aproximada |
+| Component | Precision | Approximate VRAM |
 |---|---|---|
-| Llama-3-8B (pesos base, NF4 4-bit) | 4-bit NF4 | ~4.5 GB |
-| Ativações + KV cache (seq=512) | bfloat16 | ~1.5 GB |
-| Pesos LoRA treináveis (~24M params) | bfloat16 | ~0.2 GB |
-| Gradientes LoRA + estados AdamW | float32 | ~1.0 GB |
-| **Total estimado** | | **~7.2 GB** |
+| Llama-3-8B (base weights, NF4 4-bit) | 4-bit NF4 | ~4.5 GB |
+| Activations + KV cache (seq=512) | bfloat16 | ~1.5 GB |
+| Trainable LoRA weights (~24M params) | bfloat16 | ~0.2 GB |
+| LoRA gradients + AdamW states | float32 | ~1.0 GB |
+| **Estimated total** | | **~7.2 GB** |
 
-### 2.2 Quantização NF4 via BitsAndBytes
+### 2.2 NF4 quantisation via BitsAndBytes
 
-A quantização **NF4 (NormalFloat 4-bit)** representa cada parâmetro do modelo base em 4 bits usando um código de ponto flutuante normalizado otimizado para distribuições de pesos de redes neurais (aproximadamente gaussianas). A computação em tempo de inferência e treino ocorre em `bfloat16` — os pesos são desquantizados on-the-fly por bloco antes de cada operação de matriz.
+**NF4 (NormalFloat 4-bit)** quantisation represents each base model parameter in 4 bits using a normalised floating-point code optimised for neural network weight distributions (approximately Gaussian). Computation at inference and training time occurs in `bfloat16` — weights are dequantised on-the-fly per block before each matrix operation.
 
-**Dupla quantização** (`bnb_4bit_use_double_quant=True`): quantiza também as constantes de quantização dos blocos (que normalmente ficam em float32), economizando adicionalmente ~0.4 bits por parâmetro.
+**Double quantisation** (`bnb_4bit_use_double_quant=True`): also quantises the per-block quantisation constants (which would otherwise remain in float32), saving an additional ~0.4 bits per parameter.
 
 ```python
 # ai_client/model_setup.py — QuantizationConfig
@@ -147,69 +147,69 @@ BitsAndBytesConfig(
 )
 ```
 
-O modelo base é carregado com `device_map="auto"`, deixando o BitsAndBytes alocar camadas na GPU disponível. Os pesos base são **completamente congelados** (`requires_grad=False`) — apenas os adaptadores LoRA são treináveis.
+The base model is loaded with `device_map="auto"`, letting BitsAndBytes allocate layers to the available GPU. Base weights are **fully frozen** (`requires_grad=False`) — only the LoRA adapters are trainable.
 
-### 2.3 Por que LoRA e não fine-tuning completo
+### 2.3 Why LoRA and not full fine-tuning
 
-**Fine-tuning completo** de um LLM de 8B parâmetros exigiria:
-- ~32 GB de VRAM para os pesos em float32
-- ~64–96 GB para gradientes + estados do otimizador (Adam: 2 momentos × 32-bit)
-- Transmissão de ~30 GB de dados por round por cliente no contexto federado
+**Full fine-tuning** of an 8B-parameter LLM would require:
+- ~32 GB VRAM for weights in float32
+- ~64–96 GB for gradients + optimiser states (Adam: 2 moments × 32-bit)
+- ~30 GB of data transmission per round per client in the federated setting
 
-**LoRA** (Hu et al., 2022) decompõe a atualização de cada matriz de pesos em um produto de duas matrizes de posto baixo:
+**LoRA** (Hu et al., 2022) decomposes the update of each weight matrix into a product of two low-rank matrices:
 
 ```
-ΔW = A · B    onde A ∈ ℝ^(d×r), B ∈ ℝ^(r×k), r ≪ min(d, k)
+ΔW = A · B    where A ∈ ℝ^(d×r), B ∈ ℝ^(r×k), r ≪ min(d, k)
 ```
 
-Com `r = 16` (rank adotado), o número de parâmetros treináveis cai de **8B para ~24M** (~0.3% do total). Apenas as matrizes A e B são treinadas; o restante do modelo permanece em NF4 congelado.
+With `r = 16` (adopted rank), the number of trainable parameters drops from **8B to ~24M** (~0.3% of the total). Only matrices A and B are trained; the rest of the model remains frozen in NF4.
 
-A escala efetiva da adaptação é controlada por `lora_alpha`:
+The effective scale of the adaptation is controlled by `lora_alpha`:
 
 ```
 W_eff = W_base + (lora_alpha / r) · A · B = W_base + 2.0 · A · B
 ```
 
-Com `alpha = 32` e `r = 16`, o fator de escala é 2.0 — valor padrão que balanceia estabilidade de treinamento e capacidade expressiva da adaptação.
+With `alpha = 32` and `r = 16`, the scaling factor is 2.0 — a standard value that balances training stability and the expressive capacity of the adaptation.
 
-### 2.4 Configuração dos adaptadores LoRA
+### 2.4 LoRA adapter configuration
 
 ```python
 # ai_client/model_setup.py
 LoraConfig(
-    r            = 16,       # rank da decomposição
-    lora_alpha   = 32,       # escala efetiva = 32/16 = 2.0
-    lora_dropout = 0.05,     # regularização durante treino
+    r            = 16,       # decomposition rank
+    lora_alpha   = 32,       # effective scale = 32/16 = 2.0
+    lora_dropout = 0.05,     # regularisation during training
     task_type    = TaskType.CAUSAL_LM,
     target_modules = [
-        "q_proj", "k_proj", "v_proj", "o_proj",   # atenção
+        "q_proj", "k_proj", "v_proj", "o_proj",   # attention
         "gate_proj", "up_proj", "down_proj",        # FFN (SwiGLU)
     ],
-    modules_to_save = ["embed_tokens", "lm_head"], # adaptados completamente
+    modules_to_save = ["embed_tokens", "lm_head"], # fully adapted
 )
 ```
 
-**Por que todos os 7 módulos?** Cobrir apenas `q_proj` e `v_proj` (configuração mínima comum) é suficiente para adaptação de estilo, mas insuficiente para uma nova tarefa de extração estruturada como CID-10. Incluir as projeções FFN (`gate_proj`, `up_proj`, `down_proj`) aumenta a capacidade de armazenar conhecimento factual de domínio médico nas camadas intermediárias.
+**Why all 7 modules?** Covering only `q_proj` and `v_proj` (the minimal common configuration) suffices for style adaptation, but is insufficient for a new structured extraction task like ICD-10 coding. Including the FFN projections (`gate_proj`, `up_proj`, `down_proj`) increases the capacity to store factual medical domain knowledge in the intermediate layers.
 
-**`modules_to_save`:** `embed_tokens` e `lm_head` são treinados completamente (não via LoRA) para que o modelo possa aprender o vocabulário específico de códigos CID-10 na camada de saída.
+**`modules_to_save`:** `embed_tokens` and `lm_head` are trained fully (not via LoRA) so that the model can learn the specific vocabulary of ICD-10 codes at the output layer.
 
-### 2.5 Eficiência de comunicação no contexto federado
+### 2.5 Communication efficiency in the federated setting
 
-O principal gargalo de escalabilidade em FL não é o cálculo — é a **comunicação**. Cada round envolve upload e download de pesos entre cliente e servidor. A escolha de LoRA transforma radicalmente esse custo:
+The primary scalability bottleneck in FL is not computation — it is **communication**. Each round involves uploading and downloading weights between client and server. The choice of LoRA radically transforms that cost:
 
-| Modo de treinamento | Parâmetros transmitidos | Tamanho aproximado/round |
+| Training mode | Parameters transmitted | Approximate size/round |
 |---|---|---|
-| Fine-tuning completo (bfloat16) | 8B | ~16 GB |
+| Full fine-tuning (bfloat16) | 8B | ~16 GB |
 | LoRA rank=16 (bfloat16) | ~24M | ~48 MB |
-| **Redução** | | **~333×** |
+| **Reduction** | | **~333×** |
 
-Na prática, apenas os tensores LoRA são serializados como `NDArrays` e enviados ao `fl_server` via gRPC. O modelo base Llama-3-8B nunca é transmitido — ele é carregado independentemente em cada nó a partir do cache HuggingFace (`model_cache` volume Docker).
+In practice, only the LoRA tensors are serialised as `NDArrays` and sent to the `fl_server` via gRPC. The Llama-3-8B base model is never transmitted — it is loaded independently on each node from the HuggingFace cache (`model_cache` Docker volume).
 
-Esse design é fundamental para viabilizar o protocolo federado em redes hospitalares com largura de banda limitada.
+This design is fundamental for making the federated protocol viable on hospital networks with limited bandwidth.
 
 ---
 
-## 3. Referências
+## 3. References
 
 - McMahan, H. B. et al. (2017). *Communication-Efficient Learning of Deep Networks from Decentralized Data.* AISTATS 2017.
 - Li, T. et al. (2020a). *Federated Learning on Non-IID Data Silos: An Experimental Study.* arXiv:2102.02079.
