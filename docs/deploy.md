@@ -6,9 +6,9 @@ Step-by-step: GitHub commit → cloud VM → MIMIC-IV data → full experiments.
 
 ## Prerequisites checklist
 
-- [ ] Smoke test passes locally (see below)
-- [ ] HuggingFace token with Llama-3 access
-- [ ] PhysioNet account with MIMIC-IV and MIMIC-IV-Note approved access
+- [x] Smoke test passes locally (see below)
+- [x] HuggingFace token with Llama-3 access
+- [x] PhysioNet account with MIMIC-IV and MIMIC-IV-Note approved access
 - [ ] SSH key pair for the cloud VM
 - [ ] ~50 GB disk on the cloud VM (MIMIC files ~4.5 GB + Docker images ~20 GB + model cache ~1.5 GB + HAPI DB ~3 GB)
 
@@ -74,14 +74,14 @@ git status
 cd /home/fbrosito/workspace/federated-fhir-architecture
 
 git add \
-  CLAUDE.md README.md DEPLOY.md Makefile run_experiments.sh \
+  README.md Makefile run_experiments.sh \
   ai_client/ etl_worker/ fl_server/ evaluation/ \
   docker-compose.yml pyproject.toml uv.lock \
   .gitignore
 
 git status   # review — no physionet.org/, no .env, no *.log
 
-git commit -m "feat: complete architecture — translation, gap fixes, eval pipeline, README"
+git commit -m "feat: complete architecture — eval pipeline, README"
 
 git push origin main
 ```
@@ -91,7 +91,7 @@ git push origin main
 Open `https://github.com/FBRosito/federated-fhir-architecture` and confirm:
 - All source files are present
 - No `physionet.org/`, `.env`, or large binary files
-- `DEPLOY.md`, `README.md`, `Makefile`, `run_experiments.sh` look correct
+- `docs/deploy.md`, `README.md`, `Makefile`, `run_experiments.sh` look correct
 
 ---
 
@@ -111,7 +111,7 @@ Open `https://github.com/FBRosito/federated-fhir-architecture` and confirm:
 ### 2.2 Instance configuration
 
 - **OS:** Ubuntu 22.04 LTS
-- **Disk:** 200 GB minimum (500 GB preferred for full MIMIC-IV)
+- **Disk:** 50 GB minimum (MIMIC files ~4.5 GB + Docker images ~20 GB + model cache ~1.5 GB + HAPI DB ~3 GB)
 - **SSH key:** upload your public key during instance creation
 
 ### 2.3 Connect
@@ -181,11 +181,6 @@ cat > .env <<'EOF'
 HF_TOKEN=hf_YOUR_TOKEN_HERE
 PHYSIONET_DIR=/home/ubuntu/physionet.org/files
 EOF
-
-# Verify token works
-docker run --rm -e HF_TOKEN=$HF_TOKEN \
-  huggingface/transformers-pytorch-gpu \
-  python -c "from huggingface_hub import login; login(token='$HF_TOKEN'); print('OK')"
 ```
 
 ### 3.4 Install Python dependencies

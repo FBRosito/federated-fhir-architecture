@@ -1,5 +1,7 @@
 # Federated Learning over FHIR Clinical Data
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 **Privacy-preserving clinical NLP across distributed healthcare silos using HL7 FHIR, FedProx, and Differential Privacy.**
 
 ---
@@ -88,8 +90,8 @@ CSV (MIMIC-IV)
      ┌──────────────────────────────┐
      │         fl_server            │
      │  FedProx (μ=0.01)            │
-     │  Server-side Adaptive DP     │
-     │  (σ configurable, C₀=1.0)   │
+     │  Clean aggregator            │
+     │  (no DP noise server-side)   │
      │  Aggregated global LoRA      │
      └──────────────────────────────┘
 ```
@@ -220,7 +222,7 @@ All metrics follow Mullenbach et al. (2018) and are computed on the held-out tes
 
 ### Statistical Rigour
 
-- **Confidence intervals:** 95% bootstrap CI (n=1000 resamples) over 3 random seeds (42, 123, 777).
+- **Confidence intervals:** 95% bootstrap CI (n=1000 resamples) over 3 random seeds (42, 43, 44).
 - **Significance testing:** Wilcoxon signed-rank test (centralised vs federated, and no-DP vs DP); p<0.05.
 - **Reported format:** `mean ± margin [95% CI: lower–upper] (n=3 seeds)`.
 
@@ -242,7 +244,7 @@ All metrics follow Mullenbach et al. (2018) and are computed on the held-out tes
 ### 1. Clone and install
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/FBRosito/federated-fhir-architecture.git
 cd federated-fhir-architecture
 uv sync --frozen
 ```
@@ -291,7 +293,7 @@ make down
 
 ### 5. Run full experiments (cloud — recommended)
 
-See [`DEPLOY.md`](./DEPLOY.md) for A100 / H100 cloud deployment instructions.
+See [`docs/deploy.md`](./docs/deploy.md) for A100 / H100 cloud deployment instructions.
 
 ```bash
 # Standard run: 3 seeds × 4 FL configs × 3 DP configs = 12 experiments
@@ -392,7 +394,7 @@ docker compose up fl_server ai_client_silo_0 ai_client_silo_1 \
 | `FL_PROXIMAL_MU` | `0.01` | FedProx μ — client-side proximal regularization term |
 | `FL_SEED` | `42` | Random seed for reproducibility |
 | `FL_KEEP_MODEL_IN_VRAM` | `false` | Keep model loaded between rounds (faster dev runs) |
-| `FL_PARALLEL_GPU` | `true` | `false` = serialize silos (1 GPU); `true` = parallel (multi-GPU) |
+| `FL_PARALLEL_GPU` | `false` | `false` = serialize silos (1 GPU); `true` = parallel (multi-GPU) |
 | `GPU_LOCK_PATH` | `/var/gpu_sync/gpu.lock` | Flock file path for GPU serialization |
 | `FL_EVAL_ACCURACY` | `false` | Enable per-round ICD-10 accuracy metrics |
 | `FL_TOP_K` | `5` | Top-K predictions for ICD-10 evaluation |
@@ -450,23 +452,27 @@ Target numbers based on the MIMIC-IV literature baseline (centralised, full data
 
 ### DP-SGD Mechanism
 
-The system applies **server-side adaptive clipping DP** after FedProx aggregation:
+The system applies **client-side DP-SGD** (Opacus) before any data leaves the edge node:
 
-1. Each client clips its LoRA gradient update to norm C₀ (default 1.0).
-2. The server aggregates clipped updates and adds Gaussian noise N(0, σ²C₀²I).
-3. Privacy budget (ε, δ) is tracked per-round using the **RDP accountant** (Mironov 2017).
+1. During local training, Opacus clips per-sample gradients of the LoRA adapter layers to L2 norm C₀ (default 1.0, set to a literature-based constant independent of the data — Yu et al., 2022; Anil et al., 2022).
+2. Calibrated Gaussian noise N(0, σ²C₀²I) is injected into the aggregated LoRA gradients **before the update leaves the silo**.
+3. The FL server receives only privatised LoRA deltas and acts as a clean FedProx aggregator — it adds no noise of its own.
+4. Privacy budget (ε, δ) is tracked per-round at the client using the **RDP accountant** (Mironov 2017); the cumulative ε over all rounds is the value reported in the paper.
+
+The base model weights (frozen NF4 parameters) are excluded from Opacus via `requires_grad=False` and never perturbed.
 
 **DP parameters (default):**
 
 | Parameter | Value | Meaning |
 |-----------|-------|---------|
 | σ (noise multiplier) | 0.9 | Noise scale relative to clipping norm |
-| C₀ (clipping norm) | 1.0 | Per-update L2 clipping threshold |
+| C₀ (clipping norm) | 1.0 | Per-sample gradient L2 clipping threshold |
+| q (subsampling rate) | 0.1 | Poisson subsampling rate for RDP composition |
 | δ (failure probability) | 1e-5 | Should be < 1/N (N = dataset size) |
 
 ### Privacy Budget per Configuration
 
-The ε values below are computed by the RDP accountant after 5 FL rounds with 5 silos (q = clients/round = 1.0):
+The ε values below are computed by the RDP accountant after 5 FL rounds with subsampling rate q=0.1 (cumulative ε over all rounds):
 
 | σ | Rounds | ε (δ=1e-5) | Interpretation |
 |---|--------|-----------|----------------|
@@ -535,13 +541,15 @@ federated-fhir-architecture/
 │   │   └── gradient_inversion.py    # DLG attack implementation
 │   └── pyproject.toml
 │
+├── docs/
+│   ├── decisoes_de_arquitetura.md  # Architecture decision records (Portuguese)
+│   └── deploy.md                   # Cloud deployment guide (A100/H100)
 ├── run_experiments.sh           # Full experiment orchestration (12 configs)
 ├── Makefile                     # make setup / up-infra / up-ai / logs / down / clean
 ├── docker-compose.yml           # Multi-service stack definition
 ├── pyproject.toml               # uv workspace root
 ├── uv.lock                      # Locked dependency versions
-├── CLAUDE.md                    # Architecture and coding guidelines
-└── DEPLOY.md                    # Cloud deployment guide (A100/H100)
+└── LICENSE                      # MIT License
 ```
 
 ---

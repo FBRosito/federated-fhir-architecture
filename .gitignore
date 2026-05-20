@@ -124,8 +124,9 @@ experiment_logs/*.lock
 Thumbs.db
 
 # =============================================================================
-# Claude Code — local tool settings (machine-specific, no secrets committed)
+# AI tool configuration files (machine-specific, must not appear in publication repos)
 # =============================================================================
+CLAUDE.md
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 .claude/skills/

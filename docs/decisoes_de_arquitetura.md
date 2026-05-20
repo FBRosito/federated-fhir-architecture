@@ -1,18 +1,18 @@
 # Decisões de Arquitetura — FL-FHIR Architecture
 
 **Projeto:** Aprendizado Federado sobre Dados Clínicos no Padrão FHIR
-**Repositório:** `fl_fhir_architecture`
-**Versão do documento:** 2.0
-**Data:** 2026-03-29
+**Repositório:** `federated-fhir-architecture`
+**Versão do documento:** 3.0
+**Data:** 2026-05-20
 
 ---
 
 ## Sumário
 
-1. [FedProx + Privacidade Diferencial Adaptativa](#1-fedprox--privacidade-diferencial-adaptativa)
+1. [FedProx + Privacidade Diferencial Client-Side](#1-fedprox--privacidade-diferencial-client-side)
    - 1.1 [O problema: dados Non-IID em ambientes hospitalares](#11-o-problema-dados-non-iid-em-ambientes-hospitalares)
    - 1.2 [Por que FedProx e não FedAvg](#12-por-que-fedprox-e-não-fedavg)
-   - 1.3 [Por que Privacidade Diferencial Adaptativa](#13-por-que-privacidade-diferencial-adaptativa)
+   - 1.3 [Por que DP-SGD client-side (Opacus)](#13-por-que-dp-sgd-client-side-opacus)
    - 1.4 [Modelo de ameaça mitigado](#14-modelo-de-ameaça-mitigado)
    - 1.5 [Limitações conhecidas](#15-limitações-conhecidas)
 2. [Llama-3 quantizado em 4-bits + LoRA](#2-llama-3-quantizado-em-4-bits--lora)
@@ -25,7 +25,7 @@
 
 ---
 
-## 1. FedProx + Privacidade Diferencial Adaptativa
+## 1. FedProx + Privacidade Diferencial Client-Side
 
 ### 1.1 O problema: dados Non-IID em ambientes hospitalares
 
@@ -65,55 +65,51 @@ A escolha de μ=0.01 é conservadora e adequada ao grau de heterogeneidade moder
 return FedProx(proximal_mu=proximal_mu, **common_kwargs)
 ```
 
-### 1.3 Por que Privacidade Diferencial Adaptativa
+### 1.3 Por que DP-SGD client-side (Opacus)
 
-A DP (Privacidade Diferencial) server-side envolve a estratégia base em dois mecanismos sequenciais aplicados às atualizações LoRA recebidas de cada cliente:
+A Privacidade Diferencial é aplicada **no cliente**, antes de qualquer gradiente ou delta de peso sair do nó de borda. O mecanismo utiliza o Opacus (Yousefpour et al., 2021), que implementa DP-SGD com contabilização RDP:
 
-**1. Clipping L2:** cada vetor de pesos é truncado para ter norma máxima `C_t`, limitando a influência de qualquer cliente individual na agregação (sensibilidade global).
+**1. Clipping por amostra:** durante a passagem backward, Opacus intercepta o gradiente de cada amostra individualmente e o projeta para norma máxima `C₀ = 1.0`. O valor `C₀` é fixado antes de qualquer contato com os dados, baseado nos resultados empíricos de Yu et al. (2022) e Anil et al. (2022) para modelos de linguagem com LoRA. Isso garante a **independência de dados** necessária para a garantia formal `(ε, δ)`-DP.
 
-**2. Ruído Gaussiano:** após a agregação, é adicionado ruído `N(0, σ²I)` com `σ = noise_multiplier × C_t` ao vetor agregado antes de redistribuí-lo.
+**2. Ruído Gaussiano:** após o clipping por amostra e a agregação dos gradientes no batch, é adicionado ruído calibrado `N(0, σ²C₀²I)` com `σ = noise_multiplier`. O ruído é injetado nos gradientes das camadas LoRA antes do passo de otimização.
 
-A combinação garante a propriedade `(ε, δ)`-DP: para `δ = 1e-5`, o orçamento de privacidade consumido ao longo de `T` rounds é estimado por:
+**3. Exclusão do modelo base:** os pesos do modelo base (Llama-3 em NF4 4-bit ou PubMedBERT) têm `requires_grad=False` e são completamente excluídos do mecanismo DP — somente as camadas LoRA são protegidas, o que mantém o custo computacional proporcional ao tamanho do adaptador, não do modelo completo.
 
-```
-ε_total ≈ T · √(2 · ln(1.25/δ)) / σ · (n_round / n_total)
-```
-
-**Por que adaptativa e não clipping fixo?**
-
-A variante com clipping fixo (`DifferentialPrivacyServerSideFixedClipping`) exige que o operador defina `C` manualmente. Escolher `C` muito grande reduz a efetividade da DP; muito pequeno destrói informação útil dos gradientes. A norma ideal depende da magnitude real das atualizações — desconhecida a priori e variável entre rounds.
-
-A variante **adaptativa** (`DifferentialPrivacyServerSideAdaptiveClipping`) resolve isso aprendendo `C_t` por round. O servidor mantém a estimativa do quantil-alvo `q = 0.5` (mediana) da distribuição de normas dos clientes e ajusta `C_t` com uma taxa de aprendizado `lr = 0.2`:
+**4. Contabilização RDP:** o accountant RDP (Mironov, 2017) rastreia o orçamento de privacidade acumulado. O subsampling de Poisson com taxa `q = 0.1` por round permite amplificação de privacidade. O `epsilon_cumulative` reportado no JSON de resultados é o valor a citar no artigo.
 
 ```python
-# fl_server/server.py — wrap_with_dp()
-dp_strategy = DPAdaptiveClipping(
-    strategy                 = base_strategy,
-    noise_multiplier         = 0.9,       # σ/C — razão ruído/sensibilidade
-    num_sampled_clients      = n,
-    initial_clipping_norm    = 1.0,       # C_0
-    target_clipped_quantile  = 0.5,       # mediana das normas
-    clip_norm_lr             = 0.2,       # taxa de ajuste de C_t
-    clipped_count_stddev     = √n,        # ruído na contagem de clientes clipados
+# ai_client/fl_client.py — aplicação do Opacus DP-SGD
+privacy_engine = PrivacyEngine()
+model, optimizer, train_loader = privacy_engine.make_private_with_epsilon(
+    module=lora_model,
+    optimizer=optimizer,
+    data_loader=train_loader,
+    epochs=n_epochs,
+    target_epsilon=target_epsilon,
+    target_delta=FL_TARGET_DELTA,
+    max_grad_norm=C0,   # C₀ = 1.0 (literature-based, data-independent)
 )
 ```
 
-O resultado é que o sistema **dispensa busca manual de hiperparâmetro de clipping** e se adapta automaticamente à magnitude real das atualizações LoRA — que pode variar significativamente nas primeiras rounds enquanto o modelo ainda está instável.
+**Por que client-side e não server-side?**
+
+A DP server-side (adicionada *após* a agregação) não protege os gradientes individuais dos clientes enquanto estão em trânsito ou visíveis ao servidor — um servidor comprometido pode inspecionar os deltas antes de aplicar o ruído. Com DP client-side, o ruído já está incorporado no delta que sai do silo: mesmo que o servidor seja adversarial, ele recebe apenas gradientes privatizados. Essa é a garantia de privacidade mais forte no modelo de ameaça federado (Geyer et al., 2017; Wei et al., 2020).
+
+O servidor (`fl_server`) é um agregador FedProx limpo — não adiciona ruído e não precisa ser confiável para que a garantia DP valha.
 
 ### 1.4 Modelo de ameaça mitigado
 
-**Ataques de inversão de gradiente (Gradient/Model Inversion):** dado acesso aos pesos enviados por um cliente, um adversário pode tentar reconstruir os dados de treinamento que os geraram. O ruído Gaussiano adicionado pelo servidor corrompido intencionalmente os pesos antes da redistribuição, impedindo a reconstrução exata mesmo que o adversário intercepte o modelo global.
+**Ataques de inversão de gradiente (Gradient/Model Inversion):** dado acesso aos deltas LoRA enviados por um cliente, um adversário pode tentar reconstruir o texto clínico que os originou (Zhu et al., 2019). O ruído Gaussiano injetado client-side corrompe os gradientes antes de deixarem o silo, tornando a reconstrução inviável para σ ≥ 1.0 — conforme demonstrado nos experimentos de inversão em `evaluation/src/evaluation/run_gradient_inversion.py`.
 
-**Inferência de pertinência (Membership Inference):** um adversário tenta determinar se um registro específico de paciente foi utilizado no treinamento. A garantia `(ε, δ)`-DP limita formalmente a vantagem do adversário: para `ε ≈ 1.5` (estimativa conservadora com σ=0.9, T=5, q=0.5), o adversário tem ganho de informação estritamente limitado.
+**Inferência de pertinência (Membership Inference):** um adversário tenta determinar se o registro de um paciente específico foi usado no treinamento. A garantia `(ε, δ)`-DP limita formalmente a vantagem do adversário. Com σ=0.9, 5 rounds e q=0.1, o ε cumulativo é da ordem de 4–5 (δ=1e-5), oferecendo proteção moderada a forte — adequada para dados clínicos anonimizados.
+
+**Servidor adversarial:** como o ruído é aplicado client-side, um servidor comprometido que inspecione os deltas recebidos apenas vê gradientes já privatizados — a garantia DP não depende da integridade do servidor.
 
 ### 1.5 Limitações conhecidas
 
-A DP implementada é **server-side**: o ruído é adicionado *após* a agregação, sobre os pesos agregados. Os pesos individuais enviados por cada cliente chegam ao servidor sem proteção de ruído local. Para proteção *end-to-end*, seria necessário combinar com:
-
-- **DP client-side (DP local):** cada cliente adiciona ruído antes de enviar suas atualizações.
-- **Secure Aggregation:** os pesos são agregados de forma criptograficamente segura sem que o servidor veja os valores individuais.
-
-Essas extensões não foram implementadas por aumentarem significativamente a complexidade operacional e o custo computacional — e estão fora do escopo da prova de conceito atual.
+- **Secure Aggregation:** os deltas LoRA de cada cliente chegam ao servidor em texto claro (apenas privatizados por ruído). Para impedir que o servidor reconstrua contribuições individuais por diferença entre rounds, seria necessário Secure Aggregation criptográfica (Bonawitz et al., 2017). Essa extensão aumenta significativamente a complexidade operacional e está fora do escopo atual.
+- **Neighboring relation — admissão-nível:** a garantia DP cobre a adição/remoção de uma admissão hospitalar completa (todos os DocumentReference, Condition e Patient associados). Pacientes com múltiplas admissões contribuem independentemente — o que é conservador e formalmente correto, mas pode subestimar a exposição de pacientes com histórico clínico extenso.
+- **C₀ literatura vs. dados:** `C₀ = 1.0` é declarado antes de ver qualquer dado (garantia formal). O script de calibração (`FL_CALIBRATE_GRAD_NORM=true`) mede normas reais como verificação de sanidade; seu resultado não altera `C₀` em execuções formalmente DP.
 
 ---
 
@@ -219,7 +215,14 @@ Esse design é fundamental para viabilizar o protocolo federado em redes hospita
 - Li, T. et al. (2020a). *Federated Learning on Non-IID Data Silos: An Experimental Study.* arXiv:2102.02079.
 - Li, T. et al. (2020b). *Federated Optimization in Heterogeneous Networks.* MLSys 2020.
 - Dwork, C. & Roth, A. (2014). *The Algorithmic Foundations of Differential Privacy.* Foundations and Trends in Theoretical Computer Science.
-- Andrew, G. et al. (2021). *Differentially Private Learning with Adaptive Clipping.* NeurIPS 2021.
+- Mironov, I. (2017). *Rényi Differential Privacy of the Gaussian Mechanism.* CSF 2017.
+- Geyer, R. C. et al. (2017). *Differentially Private Federated Learning: A Client Level Perspective.* NeurIPS Workshop.
+- Wei, K. et al. (2020). *Federated Learning with Differential Privacy: Algorithms and Performance Analysis.* IEEE TIFS.
+- Yousefpour, A. et al. (2021). *Opacus: User-Friendly Differential Privacy Library in PyTorch.* arXiv:2109.12298.
+- Yu, D. et al. (2022). *Differentially Private Fine-Tuning of Language Models.* ICLR 2022.
+- Anil, R. et al. (2022). *Large-Scale Differentially Private BERT.* EMNLP 2022.
+- Bonawitz, K. et al. (2017). *Practical Secure Aggregation for Privacy-Preserving Machine Learning.* CCS 2017.
+- Zhu, L. et al. (2019). *Deep Leakage from Gradients.* NeurIPS 2019.
 - Hu, E. J. et al. (2022). *LoRA: Low-Rank Adaptation of Large Language Models.* ICLR 2022.
 - Dettmers, T. et al. (2023). *QLoRA: Efficient Finetuning of Quantized LLMs.* NeurIPS 2023.
-- HL7 International. *FHIR R5 Specification.* https://hl7.org/fhir/R5.
+- HL7 International. *FHIR R4 Specification.* https://hl7.org/fhir/R4.
