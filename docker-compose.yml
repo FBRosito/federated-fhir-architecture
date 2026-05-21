@@ -25,12 +25,11 @@ x-ai-client-base: &ai-client-base
           - driver: nvidia
             count: all
             capabilities: [gpu]
-  networks:
-    - fl_net
+  network_mode: host
 
 x-silo-env: &silo-env
-  FL_SERVER_ADDRESS: "fl-server:9091"
-  FHIR_SERVER_URL: "http://hapi-fhir:8080/fhir"
+  FL_SERVER_ADDRESS: "localhost:9091"
+  FHIR_SERVER_URL: "http://localhost:8080/fhir"
   NVIDIA_VISIBLE_DEVICES: all
   NVIDIA_DRIVER_CAPABILITIES: compute,utility
   GPU_LOCK_PATH: "/var/gpu_sync/gpu.lock"
@@ -74,18 +73,11 @@ services:
   hapi_fhir:
     image: hapiproject/hapi:latest
     container_name: hapi_fhir
-    ports:
-      - "8080:8080"
     environment:
       hapi.fhir.fhir_version: R4
     # hapiproject/hapi é distroless (sem shell, sem wget, sem curl).
     # A espera pelo boot do HAPI é responsabilidade da lógica de retry em etl_pipeline.post_bundle.
-    # Alias "hapi-fhir" (com hífen) é obrigatório: Tomcat rejeita com HTML 400 qualquer
-    # Host header que contenha underscore (inválido por RFC 1123).
-    networks:
-      fl_net:
-        aliases:
-          - hapi-fhir
+    network_mode: host
 
   # ─────────────────────────────────────────────
   # FL Server — orquestrador Flower (SuperLink)
@@ -115,11 +107,7 @@ services:
       timeout: 5s
       retries: 6
       start_period: 20s
-    # Alias com hífen obrigatório: C-ares (gRPC) rejeita hostnames com underscore (RFC 1123).
-    networks:
-      fl_net:
-        aliases:
-          - fl-server
+    network_mode: host
 
   # ─────────────────────────────────────────────
   # ETL Worker — extração e transformação FHIR
@@ -130,7 +118,7 @@ services:
       dockerfile: etl_worker/Dockerfile
     container_name: etl_worker
     environment:
-      FHIR_SERVER_URL: "http://hapi-fhir:8080/fhir"
+      FHIR_SERVER_URL: "http://localhost:8080/fhir"
       ETL_BUNDLES_PATH: "/app/etl_worker/data/bundles"
       ETL_DIRICHLET_ALPHA: "${ETL_DIRICHLET_ALPHA:-0.5}"
       PYTHONUNBUFFERED: "1"   # força flush imediato — sem TTY Python bufferiza stdout/stderr
@@ -139,8 +127,7 @@ services:
         condition: service_started
     volumes:
       - ./etl_worker/data:/app/etl_worker/data   # bind mount: acesso aos bundles gerados no host
-    networks:
-      - fl_net
+    network_mode: host
 
   # ─────────────────────────────────────────────
   # AI Clients — 5 silos federados com GPU
@@ -192,7 +179,3 @@ services:
 volumes:
   model_cache:
   gpu_sync:     # arquivo de lock para serialização do acesso à GPU entre silos
-
-networks:
-  fl_net:
-    driver: bridge

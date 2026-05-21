@@ -110,6 +110,11 @@ smoke-A: ## Run smoke test for Experiment A only (ICD-10 / PubMedBERT)
 smoke-B: ## Run smoke test for Experiment B only (discharge summary / Llama)
 	bash run_experiments.sh --smoke --exp B
 
+.PHONY: smoke-nodocker
+smoke-nodocker: ## Smoke test without Docker (for cloud instances — uses run_nodocker.sh)
+	bash run_nodocker.sh --smoke --exp all
+	@echo ">>> Smoke test done. Check experiment_logs/run_*_smoke.log"
+
 .PHONY: logs
 logs: ## Follow logs of all containers in real time
 	$(COMPOSE) logs -f

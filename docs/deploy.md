@@ -1,189 +1,180 @@
 # Deploy Guide — Federated FHIR Architecture
 
-Step-by-step: GitHub commit → cloud VM → MIMIC-IV data → full experiments.
+Step-by-step: GitHub → Vast.ai A100 → MIMIC-IV → full experiment matrix.
+
+> **No Docker required.** Services run directly as Python processes + HAPI FHIR CLI (Java).
+> Vast.ai container instances block Docker-in-Docker at the kernel level. This guide avoids it entirely.
 
 ---
 
 ## Prerequisites checklist
 
-- [x] Smoke test passes locally (see below)
-- [x] HuggingFace token with Llama-3 access
+- [x] Smoke test passes locally (`make smoke`)
+- [x] HuggingFace token with Llama-3.2 access (huggingface.co/settings/tokens)
 - [x] PhysioNet account with MIMIC-IV and MIMIC-IV-Note approved access
-- [ ] SSH key pair for the cloud VM
-- [ ] ~50 GB disk on the cloud VM (MIMIC files ~4.5 GB + Docker images ~20 GB + model cache ~1.5 GB + HAPI DB ~3 GB)
+- [ ] SSH key pair (see Step 2)
+- [ ] ~40 GB disk on the cloud VM
+- [ ] Vast.ai account with credit balance (vastai.com)
 
 ---
 
-## Cost summary
+## Cost estimate
 
-| Phase | Where | Est. time | Cost (Lambda $1.29/h) |
-|-------|-------|-----------|----------------------|
-| Setup + MIMIC scp + build-mimic | Cloud | ~1.5 h | ~$2 |
-| `docker compose build` + `make up-infra` | Cloud | ~30 min | ~$0.65 |
-| `run_experiments.sh --exp all` | Cloud | ~16 h | ~$20 |
-| **Shut down instance** | — | — | — |
-| Post-processing + LLM judge | **Local** | ~1 h | $0 (only OpenRouter tokens) |
-| **Total cloud** | | **~18 h** | **~$23** |
+| Phase | Est. time | Cost (~$1.00/h A100 PCIe) |
+|-------|-----------|--------------------------|
+| Setup + MIMIC scp + build-mimic | ~1.5 h | ~$1.50 |
+| `uv sync` + HAPI start + ETL load | ~30 min | ~$0.50 |
+| Mini-validation (Step 6.5) | ~15 min | ~$0.25 |
+| `run_nodocker.sh --exp all` | ~16 h | ~$16 |
+| **Total cloud** | **~18 h** | **~$18** |
 
-> **Key rule:** shut down the instance the moment `run_experiments.sh` finishes.
-> Post-processing, LLM judge, statistical analysis, and plots all run locally.
+> **Shut down the instance immediately after experiments.** Post-processing runs locally — no GPU needed.
 
 ---
 
-## Step 0 — Run the local smoke test first
-
-**The smoke test MUST pass before going to the cloud.** It covers every code path in ~2–3 hours on a local GPU (or longer without one).
+## Step 0 — Local smoke test (MUST pass before going to the cloud)
 
 ```bash
-# Runs all experiments: calibration, centralised, FL+FedProx, FL+FedAvg, FL+DP (both backends)
-# Output: live on screen AND saved to experiment_logs/run_YYYYMMDD_HHMMSS_smoke.log
 make smoke
-
-# Quick check: should show no Traceback / Error
-grep -E "Traceback|Error|EXIT_CODE" experiment_logs/run_*_smoke.log
-
-# All JSON results produced?
-ls experiment_logs/*.json | wc -l   # expect 12+ files (smoke: 1 seed)
-```
-
-If any error appears, share the log:
-```bash
-make logs-pack   # creates experiment_logs.tar.gz for sharing
+grep -E "Traceback|Error" experiment_logs/run_*_smoke.log | wc -l   # expect 0
+ls experiment_logs/*.json | wc -l   # expect 12+ files
 ```
 
 ---
 
 ## Step 1 — Push to GitHub
 
-The remote is already configured: `git@github.com:FBRosito/federated-fhir-architecture.git`
-
-### 1.1 Verify what will be committed (security check)
+### 1.1 Security check
 
 ```bash
 git status
-# Confirm these are NOT staged (they are in .gitignore):
-#   physionet.org/   ← MIMIC-IV data (never commit)
-#   .env             ← HF token (never commit)
-#   experiment_logs/*.log  ← raw logs
-#   experiment_logs/*.json ← result JSONs (commit after experiments)
+# Must NOT be staged: physionet.org/  .env  experiment_logs/*.log
 ```
 
-### 1.2 Commit all changes
+### 1.2 Commit and push
 
 ```bash
-cd /home/fbrosito/workspace/federated-fhir-architecture
+git add README.md Makefile run_experiments.sh run_nodocker.sh \
+        ai_client/ etl_worker/ fl_server/ evaluation/ \
+        docker-compose.yml pyproject.toml uv.lock .gitignore docs/
 
-git add \
-  README.md Makefile run_experiments.sh \
-  ai_client/ etl_worker/ fl_server/ evaluation/ \
-  docker-compose.yml pyproject.toml uv.lock \
-  .gitignore
-
-git status   # review — no physionet.org/, no .env, no *.log
+git status   # review once more
 
 git commit -m "feat: complete architecture — eval pipeline, README"
-
 git push origin main
 ```
 
-### 1.3 Verify on GitHub
-
-Open `https://github.com/FBRosito/federated-fhir-architecture` and confirm:
-- All source files are present
-- No `physionet.org/`, `.env`, or large binary files
-- `docs/deploy.md`, `README.md`, `Makefile`, `run_experiments.sh` look correct
-
 ---
 
-## Step 2 — Provision the cloud VM
+## Step 2 — Provision a Vast.ai instance
 
-### 2.1 Recommended platforms
+### 2.1 Account setup
 
-| Platform | GPU | VRAM | $/h | Notes |
-|----------|-----|------|-----|-------|
-| **Lambda Labs** | A100 SXM4 | 40 GB | ~$1.29 | Best for long runs (24h+), stable |
-| Vast.ai | A100 | 40–80 GB | $0.80–2.00 | Marketplace — check host reputation |
-| RunPod | A100 SXM | 80 GB | ~$2.49 | Simple UI |
-| GCP | A100 | 40 GB | ~$3.67 | Most reliable, most expensive |
+1. Go to **vastai.com** → Create account → **Billing** → Add credit card
+2. Add balance (e.g. $30) — charges are deducted as the instance runs
 
-**Recommended: Lambda Labs A100 SXM4 40 GB** — most stable for long FL runs.
-
-### 2.2 Instance configuration
-
-- **OS:** Ubuntu 22.04 LTS
-- **Disk:** 50 GB minimum (MIMIC files ~4.5 GB + Docker images ~20 GB + model cache ~1.5 GB + HAPI DB ~3 GB)
-- **SSH key:** upload your public key during instance creation
-
-### 2.3 Connect
+### 2.2 SSH key
 
 ```bash
-ssh ubuntu@<INSTANCE_IP>
-# or if using Lambda:
-ssh -i ~/.ssh/your_key ubuntu@<INSTANCE_IP>
+# On your LOCAL machine:
+ssh-keygen -t ed25519 -f ~/.ssh/vastai_key -N ""
+cat ~/.ssh/vastai_key.pub   # copy this line
 ```
+
+Go to Vast.ai → **Account** → **SSH Keys** → paste → Save.
+
+### 2.3 Finding an instance
+
+1. Go to **Search** → type `A100` in the GPU box
+2. Filter requirements:
+
+   | Field | Minimum | Reason |
+   |-------|---------|--------|
+   | GPU RAM | ≥ 40 GB | Model + LoRA + activations |
+   | Disk Space | ≥ 40 GB | MIMIC + venv + model cache |
+   | Max Duration | ≥ 20 h | Full run takes ~16–18 h |
+   | Reliability | ≥ 99% | Risk of host dropping mid-run |
+   | CUDA | ≥ 12.1 | Required for BitsAndBytes NF4 |
+
+3. Sort by **Reliability** descending, then price
+4. **A100 PCIe is as good as SXM4 for this workload** — the bottleneck is LoRA compute, not memory bandwidth
+
+5. Select **`PyTorch (Vast)`** template (`vastai/pytorch`, CUDA 12.x)
+6. Set **Disk (GB)** to `40` (minimum) or `60` (recommended)
+7. Leave Docker Options blank — Docker is not used
+8. Click **Rent**
+
+> **How to read a listing:**
+> ```
+> Reliability 99.95%   ← must be ≥ 99%
+> Max Duration 12 days ← must be ≥ 20 h
+> DLPerf 127.5         ← higher = faster training
+> $0.703/hr            ← billed per hour
+> ```
+
+### 2.4 Connecting
+
+After the instance starts (status = Running), click it → **Connect** tab:
+
+```bash
+ssh -p <PORT> root@<HOST_IP> -i ~/.ssh/vastai_key
+```
+
+The port (`-p`) is unique to each instance and is never 22.
 
 ---
 
 ## Step 3 — Set up the instance
 
-### 3.1 Install Docker + NVIDIA Container Toolkit + uv
+### 3.1 Verify GPU
 
 ```bash
-# Update system
-sudo apt-get update && sudo apt-get upgrade -y
+nvidia-smi
+# Expected: A100 with VRAM listed. If blank, wait 30s and retry.
+```
 
-# Docker
-curl -fsSL https://get.docker.com | sudo sh
-sudo usermod -aG docker $USER
-newgrp docker
+### 3.2 Install Java (for HAPI FHIR)
 
-# Docker Compose plugin (modern)
-sudo apt-get install -y docker-compose-plugin
-docker compose version   # should show v2.x
+```bash
+apt-get update -q && apt-get install -y openjdk-17-jre-headless
+java -version   # expected: openjdk 17.x
+```
 
-# NVIDIA Container Toolkit (if not pre-installed by Lambda)
-distribution=$(. /etc/os-release; echo $ID$VERSION_ID)
-curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
-  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
-  sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
-sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
-sudo nvidia-ctk runtime configure --runtime=docker
-sudo systemctl restart docker
+### 3.3 Install uv
 
-# Verify GPU is visible to Docker
-docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
-
-# uv (Python package manager)
+```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
-source $HOME/.cargo/env   # or re-login
+source $HOME/.cargo/env
 uv --version
 ```
 
-### 3.2 Clone the repository
+### 3.4 Clone the repository
 
-```bash
-git clone git@github.com:FBRosito/federated-fhir-architecture.git
-cd federated-fhir-architecture
-```
-
-If using HTTPS:
 ```bash
 git clone https://github.com/FBRosito/federated-fhir-architecture.git
 cd federated-fhir-architecture
 ```
 
-### 3.3 Configure credentials
+### 3.5 Configure credentials
 
 ```bash
-# Create .env from template
-cat > .env <<'EOF'
-HF_TOKEN=hf_YOUR_TOKEN_HERE
-PHYSIONET_DIR=/home/ubuntu/physionet.org/files
-EOF
+cp .env.example .env
 ```
 
-### 3.4 Install Python dependencies
+Edit `.env` and fill in your HuggingFace token:
+
+```
+HF_TOKEN=hf_YOUR_TOKEN_HERE
+```
+
+To edit without a GUI:
+```bash
+nano .env   # Ctrl+O to save, Ctrl+X to exit
+```
+
+### 3.6 Install Python dependencies
+
+This downloads PyTorch CUDA + all packages into `.venv/` (~10 GB, ~15–20 min):
 
 ```bash
 uv sync --frozen
@@ -191,49 +182,41 @@ uv sync --frozen
 
 ---
 
-## Step 4 — Download MIMIC-IV
+## Step 4 — Transfer MIMIC-IV
 
-**If you already have MIMIC-IV locally (recommended — faster and no PhysioNet re-download):**
+MIMIC-IV must be placed **inside the project directory** at `physionet.org/files/...` — this path is already in `.gitignore`.
+
+**From your LOCAL machine** (replace PORT and HOST_IP with your instance values):
 
 ```bash
-# From your LOCAL machine — copy directly to the instance (~4.5 GB, ~5–10 min):
-REMOTE="ubuntu@<INSTANCE_IP>"
+# Create directories inside the project:
+ssh -p <PORT> root@<HOST_IP> -i ~/.ssh/vastai_key \
+  "mkdir -p ~/federated-fhir-architecture/physionet.org/files/mimiciv/3.1/hosp \
+             ~/federated-fhir-architecture/physionet.org/files/mimic-iv-note/2.2/note"
 
-ssh $REMOTE "mkdir -p ~/physionet.org/files/mimiciv/3.1/hosp ~/physionet.org/files/mimic-iv-note/2.2/note"
+# Copy MIMIC-IV hosp files (~4 GB, ~5–10 min):
+scp -P <PORT> -i ~/.ssh/vastai_key \
+    physionet.org/files/mimiciv/3.1/hosp/{diagnoses_icd,d_icd_diagnoses,admissions,patients,services,procedures_icd,d_icd_procedures,prescriptions,microbiologyevents,labevents}.csv.gz \
+    root@<HOST_IP>:~/federated-fhir-architecture/physionet.org/files/mimiciv/3.1/hosp/
 
-scp physionet.org/files/mimiciv/3.1/hosp/{diagnoses_icd,d_icd_diagnoses,admissions,patients,services,procedures_icd,d_icd_procedures,prescriptions,microbiologyevents,labevents}.csv.gz \
-    $REMOTE:~/physionet.org/files/mimiciv/3.1/hosp/
-
-scp physionet.org/files/mimic-iv-note/2.2/note/discharge.csv.gz \
-    $REMOTE:~/physionet.org/files/mimic-iv-note/2.2/note/
+# Copy MIMIC-IV-Note (~500 MB):
+scp -P <PORT> -i ~/.ssh/vastai_key \
+    physionet.org/files/mimic-iv-note/2.2/note/discharge.csv.gz \
+    root@<HOST_IP>:~/federated-fhir-architecture/physionet.org/files/mimic-iv-note/2.2/note/
 ```
 
-Skip to Step 4.3 after the scp completes.
-
----
-
-**Alternative — download from PhysioNet** (only if you don't have the data locally):
-
-You need a PhysioNet account with approved access to both datasets:
-- MIMIC-IV v3.1: https://physionet.org/content/mimiciv/3.1/
-- MIMIC-IV-Note v2.2: https://physionet.org/content/mimic-iv-note/2.2/
-
-### 4.1 Create directory structure
+**Alternative — download directly from PhysioNet** (if you don't have the data locally):
 
 ```bash
-mkdir -p ~/physionet.org/files/mimiciv/3.1/hosp
-mkdir -p ~/physionet.org/files/mimic-iv-note/2.2/note
-```
-
-### 4.2 Download required files
-
-```bash
+# On the cloud instance, inside ~/federated-fhir-architecture/:
 PUSER="YOUR_PHYSIONET_USERNAME"
 HOSP="https://physionet.org/files/mimiciv/3.1/hosp"
 NOTE="https://physionet.org/files/mimic-iv-note/2.2/note"
 
-cd ~/physionet.org/files/mimiciv/3.1/hosp
+mkdir -p physionet.org/files/mimiciv/3.1/hosp
+mkdir -p physionet.org/files/mimic-iv-note/2.2/note
 
+cd physionet.org/files/mimiciv/3.1/hosp
 for f in diagnoses_icd.csv.gz d_icd_diagnoses.csv.gz admissions.csv.gz \
           patients.csv.gz services.csv.gz procedures_icd.csv.gz \
           d_icd_procedures.csv.gz prescriptions.csv.gz \
@@ -241,58 +224,92 @@ for f in diagnoses_icd.csv.gz d_icd_diagnoses.csv.gz admissions.csv.gz \
   wget -N --user "$PUSER" --ask-password "$HOSP/$f"
 done
 
-cd ~/physionet.org/files/mimic-iv-note/2.2/note
+cd ~/federated-fhir-architecture/physionet.org/files/mimic-iv-note/2.2/note
 wget -N --user "$PUSER" --ask-password "$NOTE/discharge.csv.gz"
-```
-
-### 4.3 Update .env with the correct path
-
-```bash
-# The path must match what you created above
-echo "PHYSIONET_DIR=/home/ubuntu/physionet.org/files" >> .env
 ```
 
 ---
 
 ## Step 5 — Build FHIR bundles from MIMIC-IV
 
-This step reads MIMIC-IV, applies Dirichlet partitioning, and writes pre-assembled FHIR bundles to `etl_worker/data/bundles/`. Runtime: ~15–30 min for 10,000 admissions.
+Reads MIMIC-IV CSVs and writes pre-assembled FHIR bundles to `etl_worker/data/bundles/`. Runtime: ~15–30 min.
 
 ```bash
-# 10,000 admissions × 5 silos × α=0.5, full ICD-10 benchmark
-# Writes: etl_worker/data/bundles/bundle_000000.json ... bundle_009999.json
-#         etl_worker/data/temporal_split.json
-#         etl_worker/data/label_index.json
-make build-mimic \
-  MAX_ADMISSIONS=10000 \
-  N_SILOS=5 \
-  DIRICHLET_ALPHA=0.5 \
-  BENCHMARK=full \
-  ICD_VERSION=icd10
+cd ~/federated-fhir-architecture
 
-# Verify output
-ls etl_worker/data/bundles/ | wc -l   # expect ~10000
-cat etl_worker/data/temporal_split.json | python3 -m json.tool | head -20
+make build-mimic MAX_ADMISSIONS=10000 N_SILOS=5 DIRICHLET_ALPHA=0.5 BENCHMARK=full ICD_VERSION=icd10
+
+# Verify:
+ls etl_worker/data/bundles/ | wc -l          # expect ~10000
+ls etl_worker/data/label_index.json          # must exist for BERT experiment
 ```
 
 ---
 
-## Step 6 — Start infrastructure
+## Step 6 — Start HAPI FHIR and load data
+
+The `run_nodocker.sh` script handles this automatically at startup. To verify manually:
 
 ```bash
-# Builds Docker images (first time: 10–20 min depending on bandwidth)
-docker compose build
+# Download HAPI FHIR CLI and start server (first time: ~1 min download)
+wget -q "https://github.com/hapifhir/hapi-fhir/releases/download/v7.8.0/hapi-fhir-7.8.0-cli.tar.bz2" \
+     -O /tmp/hapi-cli.tar.bz2
+tar -xf /tmp/hapi-cli.tar.bz2 -C /tmp/
+find /tmp -maxdepth 2 -name "hapi*.jar" | head -1 | xargs -I{} cp {} hapi-fhir-cli.jar
 
-# Starts HAPI FHIR + FL Server + ETL Worker (loads bundles into HAPI)
-# Blocks until all three are healthy — do not proceed until this completes
-make up-infra
+nohup java -jar hapi-fhir-cli.jar run-server --fhir-version R4 --port 8080 \
+  > experiment_logs/hapi_fhir.log 2>&1 &
 
-# Verify HAPI FHIR has data
-curl -s http://localhost:8080/fhir/Patient?_summary=count | python3 -m json.tool
-# "total" should be > 0
+# Wait ~2 min for HAPI FHIR to boot, then verify:
+curl -s http://localhost:8080/fhir/metadata | python3 -m json.tool | head -5
+# Expected: {"resourceType": "CapabilityStatement", ...}
 
-curl -s http://localhost:8080/fhir/DocumentReference?_summary=count | python3 -m json.tool
-# "total" should match number of bundles
+# Load FHIR bundles into HAPI FHIR:
+FHIR_SERVER_URL=http://localhost:8080/fhir \
+ETL_BUNDLES_PATH=$(pwd)/etl_worker/data/bundles \
+uv run etl-worker
+
+# Verify data loaded:
+curl -s "http://localhost:8080/fhir/Patient?_summary=count" | python3 -c \
+  "import sys,json; print('patients:', json.load(sys.stdin)['total'])"
+# Expected: patients: ~10000
+```
+
+---
+
+## Step 6.5 — Mini-validation (REQUIRED before Step 7)
+
+Run this before the full matrix. If something is wrong, you lose ~$0.25 — not $16.
+
+```bash
+cd ~/federated-fhir-architecture
+
+# Adjust for A100 40 GB:
+export FL_BATCH_SIZE=8 FL_GRADIENT_ACCUM_STEPS=8 FL_PARALLEL_GPU=true
+
+bash run_nodocker.sh --smoke
+```
+
+**Expected output (last lines):**
+```
+ALL EXPERIMENTS COMPLETED — exp=all | mode=smoke | seeds=42
+JSON files: 12 runs saved
+```
+
+**Check the JSON was written:**
+```bash
+ls experiment_logs/*.json | wc -l   # expect 12
+python3 -c "
+import json, glob
+for p in sorted(glob.glob('experiment_logs/*.json'))[:3]:
+    d = json.load(open(p))
+    print(d['tag'], d.get('final_metrics',{}))
+"
+```
+
+If the smoke test fails, read the master log to diagnose:
+```bash
+tail -100 experiment_logs/run_*_smoke.log
 ```
 
 ---
@@ -302,7 +319,6 @@ curl -s http://localhost:8080/fhir/DocumentReference?_summary=count | python3 -m
 ### 7.1 Configure hardware for A100
 
 ```bash
-# A100 40 GB: larger batch, parallel silos
 export FL_BATCH_SIZE=8
 export FL_GRADIENT_ACCUM_STEPS=8
 export FL_PARALLEL_GPU=true
@@ -312,142 +328,104 @@ export FL_PARALLEL_GPU=true
 # export FL_GRADIENT_ACCUM_STEPS=4
 ```
 
-### 7.2 Launch experiments (survives terminal disconnect)
+### 7.2 Launch in a screen session (IMPORTANT — survives SSH disconnect)
 
 ```bash
-# screen or tmux session (IMPORTANT — experiment takes 15-20h)
 screen -S flexp
-# or: tmux new -s flexp
 
-# Run inside screen/tmux:
-# All output goes to screen AND to experiment_logs/run_YYYYMMDD_HHMMSS_full.log
-bash run_experiments.sh --exp all
+# Inside screen:
+cd ~/federated-fhir-architecture
+bash run_nodocker.sh --exp all
 
-# Detach (keep running): Ctrl+A, D (screen) or Ctrl+B, D (tmux)
-# Reattach: screen -r flexp or tmux attach -t flexp
+# Detach (keep running): Ctrl+A, D
+# Reattach later:        screen -r flexp
 ```
 
-Alternatively, with `nohup` (less preferred — harder to reattach):
-```bash
-nohup bash run_experiments.sh --exp all &
-echo $! > experiment_logs/run.pid
-# The master log is written inside run_experiments.sh automatically
-```
-
-### 7.3 Monitor progress
+### 7.3 Monitor progress (from a second SSH terminal)
 
 ```bash
-# Follow the master log (all output, all experiments)
-make logs-master
+# Tail the master log:
+tail -f experiment_logs/run_*_full.log
 
-# Quick progress check — completed runs
+# Count completed runs:
 grep "Run .* completed\|COMPLETED" experiment_logs/run_*_full.log | wc -l
-# 38 total runs (2 calibrations + 36 experiments)
+# 38 total (2 calibrations + 36 experiments)
 
-# Show only key metrics as they arrive
-tail -f experiment_logs/run_*_full.log | grep -E "CONFIG|completed|loss=|rouge|f1|ERROR"
-
-# Check JSON files produced so far
+# Check JSONs produced so far:
 ls experiment_logs/*.json 2>/dev/null | wc -l
+
+# Watch for errors:
+grep -c "Traceback\|CUDA out of memory\|killed" experiment_logs/run_*_full.log
+# If > 0, investigate immediately
 ```
 
-### 7.4 Estimated runtime on A100 40 GB
+### 7.4 Estimated runtime on A100 40 GB (parallel silos)
 
 | Phase | Runs | Est. time |
 |-------|------|-----------|
 | Calibration (bert + llm) | 2 | ~25 min |
-| Centralised baseline (bert + llm, 3 seeds each) | 6 | ~3 h |
+| Centralised baseline (bert + llm, 3 seeds) | 6 | ~3 h |
 | FL no-DP (FedProx + FedAvg, both backends, 3 seeds) | 12 | ~5 h |
 | FL with DP (σ=0.5, 1.0, 2.0, both backends, 3 seeds) | 18 | ~8 h |
 | **Total** | **38** | **~16 h** |
 
 ---
 
-## Step 8 — Retrieve results and SHUT DOWN the instance
-
-> **Cost rule: shut down the instance as soon as `run_experiments.sh` finishes.
-> Everything after this step runs on your local machine — no GPU needed.**
+## Step 8 — Retrieve results and destroy the instance
 
 ### 8.1 Pack and download results
 
 ```bash
-# On the CLOUD VM — pack results:
+# On the cloud instance:
 cd ~/federated-fhir-architecture
-make logs-pack   # creates experiment_logs.tar.gz
+tar -czf experiment_logs.tar.gz experiment_logs/*.json experiment_logs/*.log
 
-# Commit JSONs to git (optional but recommended as backup):
+# Optional git backup:
 git add experiment_logs/*.json
 git commit -m "results: full experimental matrix — bert+llm, 3 seeds, all DP configs"
 git push origin main
 ```
 
 ```bash
-# From your LOCAL machine — download:
-REMOTE="ubuntu@<INSTANCE_IP>"
-scp $REMOTE:~/federated-fhir-architecture/experiment_logs.tar.gz ./
+# From your LOCAL machine:
+scp -P <PORT> -i ~/.ssh/vastai_key \
+    root@<HOST_IP>:~/federated-fhir-architecture/experiment_logs.tar.gz ./
+
 tar -xzf experiment_logs.tar.gz
 ls experiment_logs/*.json | wc -l   # expect ~38
 ```
 
-### 8.2 SHUT DOWN the instance
+### 8.2 Destroy the instance
 
-**Do this immediately after the download completes.** The instance charges by the hour even when idle.
-
-- Lambda Labs: dashboard → Instances → Terminate
-- Or via CLI: `ssh $REMOTE "sudo shutdown now"`
-
-### 8.3 Quick results check (local)
-
-```bash
-python3 - <<'EOF'
-import json, glob, os
-for path in sorted(glob.glob("experiment_logs/*.json")):
-    try:
-        d = json.load(open(path))
-        print(f"{d.get('tag','?'):60s}  {d.get('final_metrics',{})}")
-    except Exception:
-        pass
-EOF
-```
+Vast.ai dashboard → My Instances → **Destroy** (not Stop — Destroy stops billing).
 
 ---
 
-## Step 9 — Post-processing (runs entirely LOCAL — no GPU, no cloud cost)
-
-All post-processing runs on your local machine. No instance needed.
+## Step 9 — Post-processing (entirely local — no GPU needed)
 
 ### 9.1 Statistical analysis + plots
 
 ```bash
 cd /path/to/federated-fhir-architecture
 uv sync --frozen
-
 bash run_postprocessing.sh
 # Produces: experiment_logs/statistical_summary.json + experiment_logs/figures/*.pdf
 ```
 
-### 9.2 LLM-as-a-Judge (Experiment B only — requires OpenRouter API key)
-
-The judge calls external APIs (Qwen-72B, Gemma-27B, DeepSeek-v3) — **no GPU required**.
-Cost is ~$0.01–0.05 per sample evaluated (OpenRouter pay-per-token).
+### 9.2 LLM-as-a-Judge (Experiment B — requires OpenRouter API key)
 
 ```bash
-# LOCAL machine — set your OpenRouter key:
 export OPENROUTER_API_KEY=sk-or-your_key_here
 
-# Run judge on the LLM results:
-bash run_postprocessing.sh --judge-only
-
-# Or directly:
 uv run python -m evaluation.llm_judge \
   --results-dir experiment_logs/ \
   --backend llm \
   --max-samples 50
 ```
 
-Get an OpenRouter key at: openrouter.ai/keys
+Get a key at openrouter.ai/keys. Cost: ~$0.01–0.05 per sample.
 
-### 9.3 Pull results back to git
+### 9.3 Commit results
 
 ```bash
 git add experiment_logs/*.json experiment_logs/figures/
@@ -457,74 +435,24 @@ git push origin main
 
 ---
 
-## Step 10 — Generate publication figures
-
-On your local machine after downloading results:
-
-```bash
-# Statistical summary (bootstrap CI, Wilcoxon tests)
-python3 - <<'EOF'
-import json, glob
-from evaluation.statistical_analysis import summarize_runs, compare_all_vs_baseline
-
-metric = "micro_f1"  # or rouge_l for Exp B
-data = {}
-for path in glob.glob("experiment_logs/*.json"):
-    d = json.load(open(path))
-    val = d.get("final_metrics", {}).get(metric)
-    if val is not None:
-        data.setdefault(d["config"]["strategy"] + "_" + d["config"]["backend"], []).append(val)
-
-summary = summarize_runs(data)
-for cfg, ci in summary.items():
-    print(f"{cfg}: {ci}")
-EOF
-
-# Plots
-python3 - <<'EOF'
-from evaluation.plots import curva_epsilon_vs_f1, curva_f1_vs_alpha, convergence_curves
-
-# Privacy-utility tradeoff (fill with your actual values)
-curva_epsilon_vs_f1(
-    epsilon_values=[2.1, 4.3, 8.7],
-    f1_values=[0.71, 0.69, 0.64],
-    baseline_f1=0.75,
-    output_path="figures/epsilon_vs_f1.pdf",
-)
-
-curva_f1_vs_alpha(
-    alpha_values=[0.1, 0.5, 1.0],
-    f1_fedprox=[0.58, 0.63, 0.66],
-    f1_fedavg=[0.52, 0.57, 0.61],
-    f1_centralizado=0.75,
-    output_path="figures/f1_vs_alpha.pdf",
-)
-EOF
-```
-
----
-
 ## Troubleshooting
 
 | Symptom | Likely cause | Fix |
 |---------|-------------|-----|
-| `CUDA out of memory` | Batch too large for GPU | Reduce `FL_BATCH_SIZE` to 4 or 2 |
-| `fl_server not healthy` after 2 min | gRPC startup timeout | `docker compose restart fl_server` |
-| FL silos exit without metrics | HAPI FHIR has no data | Re-run `make up-infra` after `make build-mimic` |
-| `label_index not found` | BERT_LABEL_INDEX_PATH wrong | Ensure `etl_worker/data/label_index.json` exists |
-| `HF token invalid` | Token expired or wrong scope | Regenerate at huggingface.co/settings/tokens |
-| Silo hangs after training | Flower `start_client` deprecation warning | Expected/harmless — watch for actual error lines |
-| Empty ROUGE scores | `reference_summary` missing | Ensure MIMIC-IV-Note `discharge.csv.gz` was loaded |
-| `experiment_logs/*.json` missing | `save_run_json` couldn't parse server log | Check `grep "Aggregated eval" experiment_logs/*_server.log` |
+| `CUDA out of memory` | Batch too large | Reduce `FL_BATCH_SIZE` to 4 or 2 |
+| `fl_server failed to start` after 2 min | Port 9091 in use | `pkill -f fl-server; sleep 2` then re-run |
+| HAPI FHIR not ready after 6 min | Java OOM | `tail experiment_logs/hapi_fhir.log` — add `-Xmx4g` if heap error |
+| FL silos exit without metrics | HAPI FHIR has no data | Re-run ETL: `FHIR_SERVER_URL=http://localhost:8080/fhir uv run etl-worker` |
+| `label_index not found` | build-mimic not run | Run Step 5 first |
+| `HF token invalid` | Token expired | Regenerate at huggingface.co/settings/tokens, update `.env` |
+| Silo hangs after training | Flower deprecation warning | Expected/harmless — watch for actual error lines |
+| Empty ROUGE scores | MIMIC-IV-Note not loaded | Ensure `discharge.csv.gz` was transferred and ETL ran |
+| `experiment_logs/*.json` missing after run | `save_run_json` couldn't parse log | `grep "Aggregated eval" experiment_logs/*_server.log` |
+| HAPI FHIR loses data between runs | In-memory server restarted | `run_nodocker.sh` detects this and re-runs ETL automatically |
 
 ### Sharing logs for debugging
 
 ```bash
-# Pack all logs into a single compressed file
-make logs-pack
-# Produces: experiment_logs.tar.gz
-
-# Or just the master log for a specific run
-gzip -k experiment_logs/run_20260502_143000_full.log
-# Share: experiment_logs/run_20260502_143000_full.log.gz
+tar -czf experiment_logs.tar.gz experiment_logs/run_*.log experiment_logs/*.json
+# Share: experiment_logs.tar.gz
 ```
