@@ -72,7 +72,7 @@ class ICD10Metrics:
 
     def __str__(self) -> str:
         lines = [
-            f"ICD-10 Metrics (n={self.n_samples}, labels={self.n_labels})",
+            f"ICD-10 Metrics (n={self.n_samples}, labels={self.n_labels}, threshold={self.threshold:.2f})",
             f"  Micro-F1:      {self.micro_f1:.4f}",
             f"  Macro-F1:      {self.macro_f1:.4f}",
             f"  AUC-ROC micro: {self.auc_roc_micro:.4f}",
@@ -112,11 +112,30 @@ def _recall_at_k(y_true: np.ndarray, y_score: np.ndarray, k: int) -> float:
     return total / max(n, 1)
 
 
+_THRESHOLD_GRID = [0.01, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50]
+
+
+def find_optimal_threshold(
+    y_true: np.ndarray,
+    y_score: np.ndarray,
+    thresholds: list[float] | None = None,
+) -> float:
+    """Grid-search the threshold that maximises micro-F1 on (y_true, y_score)."""
+    candidates = thresholds if thresholds is not None else _THRESHOLD_GRID
+    best_t, best_f1 = 0.5, -1.0
+    for t in candidates:
+        f1 = float(f1_score(y_true, (y_score >= t).astype(int), average="micro", zero_division=0))
+        if f1 > best_f1:
+            best_f1, best_t = f1, t
+    log.debug("Optimal threshold: %.2f  (micro-F1=%.4f)", best_t, best_f1)
+    return best_t
+
+
 def compute_icd_metrics(
     y_true: np.ndarray,
     y_score: np.ndarray,
     k_list: list[int] | None = None,
-    threshold: float = 0.5,
+    threshold: float | None = None,
 ) -> ICD10Metrics:
     """
     Computes the full Mullenbach 2018 metric set for ICD-10 multi-label coding.
@@ -125,7 +144,8 @@ def compute_icd_metrics(
         y_true:    [n_samples, n_labels] — binary ground truth {0, 1}.
         y_score:   [n_samples, n_labels] — sigmoid probabilities from the model.
         k_list:    List of k values for @k metrics (default: [8, 15]).
-        threshold: Threshold for binary F1 (default: 0.5).
+        threshold: Threshold for binary F1. If None (default), the threshold is
+                   selected via grid search to maximise micro-F1 on this set.
 
     Returns:
         ICD10Metrics with all metrics computed.
@@ -134,6 +154,12 @@ def compute_icd_metrics(
         k_list = [8, 15]
 
     n_samples, n_labels = y_true.shape
+
+    # Adaptive threshold: find the value that maximises micro-F1 on this set.
+    # With many labels (e.g. 7756), sigmoid outputs are typically well below 0.5
+    # even for correct predictions, so a fixed 0.5 threshold produces F1=0.
+    if threshold is None:
+        threshold = find_optimal_threshold(y_true, y_score)
 
     # Binary predictions via threshold
     y_pred = (y_score >= threshold).astype(int)

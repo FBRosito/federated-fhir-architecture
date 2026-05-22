@@ -431,8 +431,16 @@ def load_base_data(
                 out_li.write_text(_json.dumps(label_index, indent=2))
                 log.info("Top50 label index saved to: %s", out_li)
         else:  # full
-            valid_codes = set(code_counts[code_counts >= 10].index)
+            full_series = code_counts[code_counts >= 10]
+            valid_codes = set(full_series.index)
             log.info("Benchmark full: %d ICD-10 codes with ≥10 occurrences.", len(valid_codes))
+            if label_index_output:
+                import json as _json
+                label_index = {code: idx for idx, code in enumerate(full_series.index)}
+                out_li = Path(label_index_output)
+                out_li.parent.mkdir(parents=True, exist_ok=True)
+                out_li.write_text(_json.dumps(label_index, indent=2))
+                log.info("Full label index saved to: %s", out_li)
         before = len(df)
         df = df[df["icd_code"].isin(valid_codes)].copy()
         log.info("After benchmark '%s' filter: %d → %d admissions.", benchmark, before, len(df))

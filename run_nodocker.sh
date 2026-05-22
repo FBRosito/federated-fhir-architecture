@@ -70,15 +70,25 @@ export FL_PARALLEL_GPU="${FL_PARALLEL_GPU:-false}"
 log "Hardware: LLM batch=$LLM_BATCH_SIZE accum=$LLM_GRADIENT_ACCUM | BERT batch=$BERT_BATCH_SIZE accum=$BERT_GRADIENT_ACCUM | parallel_gpu=$FL_PARALLEL_GPU"
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-export MIMIC_HOSP_DIR="${MIMIC_HOSP_DIR:-$(pwd)/physionet.org/files/mimiciv/3.1/hosp}"
-export MIMIC_NOTE_DIR="${MIMIC_NOTE_DIR:-$(pwd)/physionet.org/files/mimic-iv-note/2.2/note}"
+export MIMIC_HOSP_DIR="$(pwd)/physionet.org/files/mimiciv/3.1/hosp"
+export MIMIC_NOTE_DIR="$(pwd)/physionet.org/files/mimic-iv-note/2.2/note"
 export BERT_LABEL_INDEX_PATH="${BERT_LABEL_INDEX_PATH:-$(pwd)/etl_worker/data/label_index.json}"
 export GPU_LOCK_PATH="${GPU_LOCK_PATH:-/tmp/fl_gpu.lock}"
 
-HAPI_VERSION="7.8.0"
-HAPI_JAR="hapi-fhir-cli.jar"
+HAPI_JAR="hapi-fhir-cli.jar"   # Spring Boot WAR from hapi-fhir-jpaserver-starter
 
 # ── HAPI FHIR ─────────────────────────────────────────────────────────────────
+
+build_hapi_server() {
+    log "Building HAPI FHIR JPA Server from source (~10 min)..."
+    command -v javac >/dev/null 2>&1 || apt-get install -y openjdk-17-jdk-headless -q
+    command -v mvn   >/dev/null 2>&1 || apt-get install -y maven -q
+    git clone --depth 1 https://github.com/hapifhir/hapi-fhir-jpaserver-starter.git /tmp/hapi-starter
+    (cd /tmp/hapi-starter && mvn package -DskipTests -q)
+    cp /tmp/hapi-starter/target/ROOT.war "./$HAPI_JAR"
+    rm -rf /tmp/hapi-starter
+    log "HAPI FHIR JPA Server built: $HAPI_JAR"
+}
 
 start_hapi_fhir() {
     if pgrep -f "$HAPI_JAR" > /dev/null 2>&1; then
@@ -86,12 +96,7 @@ start_hapi_fhir() {
         return 0
     fi
     if [ ! -f "$HAPI_JAR" ]; then
-        log "Downloading HAPI FHIR CLI v${HAPI_VERSION}..."
-        wget -q "https://github.com/hapifhir/hapi-fhir/releases/download/v${HAPI_VERSION}/hapi-fhir-${HAPI_VERSION}-cli.tar.bz2" \
-             -O /tmp/hapi-cli.tar.bz2
-        tar -xf /tmp/hapi-cli.tar.bz2 -C /tmp/
-        find /tmp -maxdepth 2 -name "hapi*.jar" | head -1 | xargs -I{} cp {} "./$HAPI_JAR"
-        rm -f /tmp/hapi-cli.tar.bz2
+        build_hapi_server
     fi
     nohup java -jar "$HAPI_JAR" run-server --fhir-version R4 --port 8080 \
         > "$LOGS/hapi_fhir.log" 2>&1 &

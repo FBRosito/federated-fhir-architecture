@@ -252,10 +252,10 @@ The `run_nodocker.sh` script handles this automatically at startup. To verify ma
 
 ```bash
 # Download HAPI FHIR CLI and start server (first time: ~1 min download)
-wget -q "https://github.com/hapifhir/hapi-fhir/releases/download/v7.8.0/hapi-fhir-7.8.0-cli.tar.bz2" \
-     -O /tmp/hapi-cli.tar.bz2
-tar -xf /tmp/hapi-cli.tar.bz2 -C /tmp/
-find /tmp -maxdepth 2 -name "hapi*.jar" | head -1 | xargs -I{} cp {} hapi-fhir-cli.jar
+curl -fsSL "https://github.com/hapifhir/hapi-fhir/releases/download/v8.10.0/hapi-fhir-8.10.0-cli.zip" \
+     -o /tmp/hapi-cli.zip
+unzip -q /tmp/hapi-cli.zip -d /tmp/hapi-cli/
+find /tmp/hapi-cli -name "hapi*.jar" | head -1 | xargs -I{} cp {} hapi-fhir-cli.jar
 
 nohup java -jar hapi-fhir-cli.jar run-server --fhir-version R4 --port 8080 \
   > experiment_logs/hapi_fhir.log 2>&1 &

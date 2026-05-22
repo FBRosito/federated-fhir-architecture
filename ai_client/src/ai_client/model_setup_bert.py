@@ -285,7 +285,7 @@ def build_bert_dataset(
         lv = [0] * num_labels
         codes = ex.all_icd10_codes if ex.all_icd10_codes else [ex.icd10_code]
         for code in codes:
-            if code in label_index:
+            if code in label_index and label_index[code] < num_labels:
                 lv[label_index[code]] = 1
         label_vectors.append(lv)
 
