@@ -185,8 +185,8 @@ with open(srv) as f:
         if m:
             fit_rounds.append(safe_parse(m.group(1)))
 
-FIT_KEYS_TO_MERGE = {"epsilon_spent", "train_loss", "lora_b_norm_end",
-                     "lora_b_drift_ratio", "proximal_mu"}
+FIT_KEYS_TO_MERGE = {"epsilon_spent", "epsilon_cumulative", "train_loss",
+                     "lora_b_norm_end", "lora_b_drift_ratio", "proximal_mu"}
 rounds_data = []
 for i, eval_m in enumerate(eval_rounds):
     merged = dict(eval_m)

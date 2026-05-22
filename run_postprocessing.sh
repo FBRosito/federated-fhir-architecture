@@ -204,7 +204,7 @@ try:
     eps_vals, f1_vals = [], []
     for name in sorted(dp_bert, key=lambda n: all_runs[n]["config"]["noise_multiplier"]):
         run = dp_bert[name]
-        eps = get_metric(run, "epsilon_spent") or get_metric(run, "epsilon")
+        eps = get_metric(run, "epsilon_cumulative") or get_metric(run, "epsilon_spent") or get_metric(run, "epsilon")
         f1  = get_metric(run, "micro_f1")
         if eps is not None and f1 is not None:
             eps_vals.append(eps)
@@ -213,7 +213,7 @@ try:
         curva_epsilon_vs_f1(eps_vals, f1_vals, output_path=f"{figures_dir}/epsilon_vs_f1.pdf")
         log.info("Saved epsilon_vs_f1.pdf  (n=%d DP configs)", len(eps_vals))
     else:
-        log.warning("epsilon_vs_f1 skipped: need epsilon_spent in run JSON (n=%d)", len(eps_vals))
+        log.warning("epsilon_vs_f1 skipped: need epsilon_cumulative in run JSON (n=%d)", len(eps_vals))
 except Exception as e:
     log.warning("epsilon_vs_f1 failed: %s", e)
 

@@ -535,11 +535,17 @@ class FHIRFederatedClient(NumPyClient):
 
         if self._backend == "bert":
             from ai_client.model_setup_bert import BertLoRAConfig, load_bert_model
-            # Always 50 labels (MIMIC-IV-50): the server initializes parameters with
-            # num_labels=50 (get_parameters before data). If the local label_index has
-            # <50 entries (small silo), the model must still have 50 outputs so that
-            # set_bert_parameters() does not encounter shape mismatch in aggregated tensors.
-            num_labels = 50
+            # num_labels comes from the shared global label_index.json — same file used
+            # by centralised_baseline.py — so FL and centralised evaluate on identical
+            # label spaces. All silos load the same file, keeping parameter shapes
+            # consistent across silos and rounds.
+            _lp = os.getenv("BERT_LABEL_INDEX_PATH", "")
+            if _lp and os.path.exists(_lp):
+                import json as _json
+                with open(_lp) as _f:
+                    num_labels = len(_json.load(_f))
+            else:
+                num_labels = 50  # fallback for smoke tests without build-mimic
             log.info("Loading PubMedBERT (backend=bert, num_labels=%d)...", num_labels)
             model, tokenizer = load_bert_model(
                 model_name = self.model_name if self.model_name != _MODEL_NAME
@@ -655,12 +661,22 @@ class FHIRFederatedClient(NumPyClient):
 
         self._train_examples, self._eval_examples = _stratified_split(examples)
 
-        # BERT backend: build label index on first data load
+        # BERT backend: use the shared global label_index.json so that all silos
+        # and the centralised baseline operate on the same label space (same ICD-10
+        # code → column mapping). Falling back to local silo index only when the
+        # file is absent (e.g. smoke tests without build-mimic).
         if self._backend == "bert" and self._label_index is None:
-            from ai_client.fhir_consumer_bert import build_label_index
-            all_examples = self._train_examples + self._eval_examples
-            self._label_index = build_label_index(all_examples, benchmark=_BERT_BENCHMARK)
-            log.info("BERT label index: %d ICD-10 labels.", len(self._label_index))
+            _lp = os.getenv("BERT_LABEL_INDEX_PATH", "")
+            if _lp and os.path.exists(_lp):
+                import json as _json
+                with open(_lp) as _f:
+                    self._label_index = _json.load(_f)
+                log.info("BERT label index loaded from %s: %d labels.", _lp, len(self._label_index))
+            else:
+                from ai_client.fhir_consumer_bert import build_label_index
+                all_examples = self._train_examples + self._eval_examples
+                self._label_index = build_label_index(all_examples, benchmark=_BERT_BENCHMARK)
+                log.info("BERT label index (local fallback): %d ICD-10 labels.", len(self._label_index))
 
     # ── NumPyClient interface ─────────────────────────────────────────────────
 
