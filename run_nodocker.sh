@@ -80,10 +80,10 @@ HAPI_JAR="hapi-fhir-cli.jar"   # HAPI FHIR CLI tool (auto-downloaded if absent)
 # ── HAPI FHIR ─────────────────────────────────────────────────────────────────
 
 build_hapi_server() {
-    log "Downloading HAPI FHIR CLI v8.10.0..."
+    log "Downloading HAPI FHIR CLI v6.6.0..."
     command -v unzip >/dev/null 2>&1 || apt-get install -y unzip -q
     curl -fsSL \
-        "https://github.com/hapifhir/hapi-fhir/releases/download/v8.10.0/hapi-fhir-8.10.0-cli.zip" \
+        "https://github.com/hapifhir/hapi-fhir/releases/download/v6.6.0/hapi-fhir-6.6.0-cli.zip" \
         -o /tmp/hapi-cli.zip
     unzip -q /tmp/hapi-cli.zip -d /tmp/hapi-cli/
     find /tmp/hapi-cli -name "hapi*.jar" | head -1 | xargs -I{} cp {} "./$HAPI_JAR"
