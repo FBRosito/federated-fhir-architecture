@@ -75,52 +75,36 @@ export MIMIC_NOTE_DIR="$(pwd)/physionet.org/files/mimic-iv-note/2.2/note"
 export BERT_LABEL_INDEX_PATH="${BERT_LABEL_INDEX_PATH:-$(pwd)/etl_worker/data/label_index.json}"
 export GPU_LOCK_PATH="${GPU_LOCK_PATH:-/tmp/fl_gpu.lock}"
 
-HAPI_JAR="hapi-fhir-cli.jar"   # HAPI FHIR CLI tool (auto-downloaded if absent)
+FHIR_SERVER_SCRIPT="fhir_server.py"   # minimal Python FHIR server (stdlib only)
 
-# ── HAPI FHIR ─────────────────────────────────────────────────────────────────
-
-build_hapi_server() {
-    log "Downloading HAPI FHIR CLI v5.7.2..."
-    command -v unzip >/dev/null 2>&1 || apt-get install -y unzip -q
-    curl -fsSL \
-        "https://github.com/hapifhir/hapi-fhir/releases/download/v5.7.2/hapi-fhir-5.7.2-cli.zip" \
-        -o /tmp/hapi-cli.zip
-    unzip -q /tmp/hapi-cli.zip -d /tmp/hapi-cli/
-    find /tmp/hapi-cli -name "hapi*.jar" | head -1 | xargs -I{} cp {} "./$HAPI_JAR"
-    rm -rf /tmp/hapi-cli /tmp/hapi-cli.zip
-    log "HAPI FHIR CLI ready: $HAPI_JAR"
-}
+# ── FHIR server (Python, no Docker / no Java required) ────────────────────────
 
 start_hapi_fhir() {
-    if pgrep -f "$HAPI_JAR" > /dev/null 2>&1; then
-        log "HAPI FHIR already running."
+    if pgrep -f "$FHIR_SERVER_SCRIPT" > /dev/null 2>&1; then
+        log "FHIR server already running."
         return 0
     fi
-    if [ ! -f "$HAPI_JAR" ]; then
-        build_hapi_server
-    fi
-    # --add-opens flags required for HAPI FHIR 5.x running on Java 17+
-    nohup java \
-        --add-opens java.base/java.lang=ALL-UNNAMED \
-        --add-opens java.base/java.util=ALL-UNNAMED \
-        -jar "$HAPI_JAR" run-server --fhir-version R4 --port 8080 \
+    local py
+    py="${VIRTUAL_ENV:-.venv}/bin/python"
+    [ -x "$py" ] || py="$(command -v python3)"
+    nohup "$py" "$FHIR_SERVER_SCRIPT" 8080 \
         > "$LOGS/hapi_fhir.log" 2>&1 &
     echo $! > /tmp/hapi_fhir.pid
-    log "HAPI FHIR starting (PID=$(cat /tmp/hapi_fhir.pid))..."
+    log "FHIR server starting (PID=$(cat /tmp/hapi_fhir.pid))..."
 }
 
 wait_hapi_ready() {
-    log "Waiting for HAPI FHIR at http://localhost:8080/fhir/metadata..."
+    log "Waiting for FHIR server at http://localhost:8080/fhir/metadata..."
     local tries=0
     until curl -sf http://localhost:8080/fhir/metadata > /dev/null 2>&1; do
-        printf '.'; sleep 5
+        printf '.'; sleep 2
         tries=$((tries+1))
-        if [ $tries -gt 72 ]; then
-            log "ERROR: HAPI FHIR failed to start after 6 min. Check $LOGS/hapi_fhir.log"
+        if [ $tries -gt 15 ]; then
+            log "ERROR: FHIR server failed to start after 30s. Check $LOGS/hapi_fhir.log"
             exit 1
         fi
     done
-    echo " HAPI FHIR ready."
+    echo " FHIR server ready."
 }
 
 # ── FL Server ─────────────────────────────────────────────────────────────────
