@@ -80,10 +80,10 @@ FHIR_SERVER_SCRIPT="fhir_server.py"   # minimal Python FHIR server (stdlib only)
 # ── FHIR server (Python, no Docker / no Java required) ────────────────────────
 
 start_hapi_fhir() {
-    if pgrep -f "$FHIR_SERVER_SCRIPT" > /dev/null 2>&1; then
-        log "FHIR server already running."
-        return 0
-    fi
+    # Kill any stale process on port 8080 before starting fresh
+    pkill -f "$FHIR_SERVER_SCRIPT" 2>/dev/null || true
+    fuser -k 8080/tcp 2>/dev/null || true
+    sleep 1
     local py
     py="${VIRTUAL_ENV:-.venv}/bin/python"
     [ -x "$py" ] || py="$(command -v python3)"
