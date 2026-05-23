@@ -237,7 +237,7 @@ Reads MIMIC-IV CSVs and writes pre-assembled FHIR bundles to `etl_worker/data/bu
 ```bash
 cd ~/federated-fhir-architecture
 
-make build-mimic MAX_ADMISSIONS=10000 N_SILOS=5 DIRICHLET_ALPHA=0.5 BENCHMARK=full ICD_VERSION=icd10
+make build-mimic MAX_ADMISSIONS=10000 N_SILOS=5 DIRICHLET_ALPHA=0.5 BENCHMARK=top50 ICD_VERSION=icd10
 
 # Verify:
 ls etl_worker/data/bundles/ | wc -l          # expect ~10000
@@ -279,26 +279,25 @@ curl -s "http://localhost:8080/fhir/Patient?_summary=count" | python3 -c \
 
 ## Step 6.5 — Mini-validation (REQUIRED before Step 7)
 
-Run this before the full matrix. If something is wrong, you lose ~$0.25 — not $16.
+Run this before the full matrix. If something is wrong, you lose ~$0.05 — not $10.
 
 ```bash
 cd ~/federated-fhir-architecture
 
-# Adjust for A100 40 GB:
 export FL_BATCH_SIZE=8 FL_GRADIENT_ACCUM_STEPS=8 FL_PARALLEL_GPU=true
 
-bash run_nodocker.sh --smoke
+bash run_nodocker.sh --exp A --smoke
 ```
 
 **Expected output (last lines):**
 ```
-ALL EXPERIMENTS COMPLETED — exp=all | mode=smoke | seeds=42
-JSON files: 12 runs saved
+ALL EXPERIMENTS COMPLETED — exp=A | mode=smoke | seeds=42
+JSON files: 7 runs saved
 ```
 
 **Check the JSON was written:**
 ```bash
-ls experiment_logs/*.json | wc -l   # expect 12
+ls experiment_logs/*.json | wc -l   # expect 7
 python3 -c "
 import json, glob
 for p in sorted(glob.glob('experiment_logs/*.json'))[:3]:
@@ -316,16 +315,18 @@ tail -100 experiment_logs/run_*_smoke.log
 
 ## Step 7 — Run the full experiment matrix
 
-### 7.1 Configure hardware for A100
+### 7.1 Configure hardware for RTX 4090 (recommended) or A100
 
 ```bash
+# RTX 4090 (24 GB) — optimal for Experiment A (BERT only):
 export FL_BATCH_SIZE=8
 export FL_GRADIENT_ACCUM_STEPS=8
 export FL_PARALLEL_GPU=true
 
-# For A100 80 GB, can push further:
+# A100 PCIe 40 GB — can push further:
 # export FL_BATCH_SIZE=16
 # export FL_GRADIENT_ACCUM_STEPS=4
+# export FL_PARALLEL_GPU=true
 ```
 
 ### 7.2 Launch in a screen session (IMPORTANT — survives SSH disconnect)
@@ -335,7 +336,7 @@ screen -S flexp
 
 # Inside screen:
 cd ~/federated-fhir-architecture
-bash run_nodocker.sh --exp all
+bash run_nodocker.sh --exp A
 
 # Detach (keep running): Ctrl+A, D
 # Reattach later:        screen -r flexp
@@ -349,7 +350,7 @@ tail -f experiment_logs/run_*_full.log
 
 # Count completed runs:
 grep "Run .* completed\|COMPLETED" experiment_logs/run_*_full.log | wc -l
-# 38 total (2 calibrations + 36 experiments)
+# 19 total (1 calibration + 3 centralised + 15 FL runs)
 
 # Check JSONs produced so far:
 ls experiment_logs/*.json 2>/dev/null | wc -l
@@ -359,15 +360,15 @@ grep -c "Traceback\|CUDA out of memory\|killed" experiment_logs/run_*_full.log
 # If > 0, investigate immediately
 ```
 
-### 7.4 Estimated runtime on A100 40 GB (parallel silos)
+### 7.4 Estimated runtime on RTX 4090 (Experiment A only — BERT top-50)
 
 | Phase | Runs | Est. time |
 |-------|------|-----------|
-| Calibration (bert + llm) | 2 | ~25 min |
-| Centralised baseline (bert + llm, 3 seeds) | 6 | ~3 h |
-| FL no-DP (FedProx + FedAvg, both backends, 3 seeds) | 12 | ~5 h |
-| FL with DP (σ=0.5, 1.0, 2.0, both backends, 3 seeds) | 18 | ~8 h |
-| **Total** | **38** | **~16 h** |
+| Calibration (bert) | 1 | ~10 min |
+| Centralised baseline (bert, 3 seeds) | 3 | ~1.5 h |
+| FL no-DP (FedProx + FedAvg, 3 seeds) | 6 | ~3 h |
+| FL with DP (σ=0.5, 1.0, 2.0, 3 seeds) | 9 | ~5 h |
+| **Total** | **19** | **~10 h** |
 
 ---
 
