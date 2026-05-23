@@ -80,10 +80,10 @@ HAPI_JAR="hapi-fhir-cli.jar"   # HAPI FHIR CLI tool (auto-downloaded if absent)
 # ── HAPI FHIR ─────────────────────────────────────────────────────────────────
 
 build_hapi_server() {
-    log "Downloading HAPI FHIR CLI v6.6.0..."
+    log "Downloading HAPI FHIR CLI v5.7.2..."
     command -v unzip >/dev/null 2>&1 || apt-get install -y unzip -q
     curl -fsSL \
-        "https://github.com/hapifhir/hapi-fhir/releases/download/v6.6.0/hapi-fhir-6.6.0-cli.zip" \
+        "https://github.com/hapifhir/hapi-fhir/releases/download/v5.7.2/hapi-fhir-5.7.2-cli.zip" \
         -o /tmp/hapi-cli.zip
     unzip -q /tmp/hapi-cli.zip -d /tmp/hapi-cli/
     find /tmp/hapi-cli -name "hapi*.jar" | head -1 | xargs -I{} cp {} "./$HAPI_JAR"
@@ -99,7 +99,11 @@ start_hapi_fhir() {
     if [ ! -f "$HAPI_JAR" ]; then
         build_hapi_server
     fi
-    nohup java -jar "$HAPI_JAR" run-server --fhir-version R4 --port 8080 \
+    # --add-opens flags required for HAPI FHIR 5.x running on Java 17+
+    nohup java \
+        --add-opens java.base/java.lang=ALL-UNNAMED \
+        --add-opens java.base/java.util=ALL-UNNAMED \
+        -jar "$HAPI_JAR" run-server --fhir-version R4 --port 8080 \
         > "$LOGS/hapi_fhir.log" 2>&1 &
     echo $! > /tmp/hapi_fhir.pid
     log "HAPI FHIR starting (PID=$(cat /tmp/hapi_fhir.pid))..."
