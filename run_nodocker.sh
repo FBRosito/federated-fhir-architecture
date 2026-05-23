@@ -75,19 +75,20 @@ export MIMIC_NOTE_DIR="$(pwd)/physionet.org/files/mimic-iv-note/2.2/note"
 export BERT_LABEL_INDEX_PATH="${BERT_LABEL_INDEX_PATH:-$(pwd)/etl_worker/data/label_index.json}"
 export GPU_LOCK_PATH="${GPU_LOCK_PATH:-/tmp/fl_gpu.lock}"
 
-HAPI_JAR="hapi-fhir-cli.jar"   # Spring Boot WAR from hapi-fhir-jpaserver-starter
+HAPI_JAR="hapi-fhir-cli.jar"   # HAPI FHIR CLI tool (auto-downloaded if absent)
 
 # ── HAPI FHIR ─────────────────────────────────────────────────────────────────
 
 build_hapi_server() {
-    log "Building HAPI FHIR JPA Server from source (~10 min)..."
-    command -v javac >/dev/null 2>&1 || apt-get install -y openjdk-17-jdk-headless -q
-    command -v mvn   >/dev/null 2>&1 || apt-get install -y maven -q
-    git clone --depth 1 https://github.com/hapifhir/hapi-fhir-jpaserver-starter.git /tmp/hapi-starter
-    (cd /tmp/hapi-starter && mvn package -DskipTests -q)
-    cp /tmp/hapi-starter/target/ROOT.war "./$HAPI_JAR"
-    rm -rf /tmp/hapi-starter
-    log "HAPI FHIR JPA Server built: $HAPI_JAR"
+    log "Downloading HAPI FHIR CLI v8.10.0..."
+    command -v unzip >/dev/null 2>&1 || apt-get install -y unzip -q
+    curl -fsSL \
+        "https://github.com/hapifhir/hapi-fhir/releases/download/v8.10.0/hapi-fhir-8.10.0-cli.zip" \
+        -o /tmp/hapi-cli.zip
+    unzip -q /tmp/hapi-cli.zip -d /tmp/hapi-cli/
+    find /tmp/hapi-cli -name "hapi*.jar" | head -1 | xargs -I{} cp {} "./$HAPI_JAR"
+    rm -rf /tmp/hapi-cli /tmp/hapi-cli.zip
+    log "HAPI FHIR CLI ready: $HAPI_JAR"
 }
 
 start_hapi_fhir() {
@@ -121,9 +122,9 @@ wait_hapi_ready() {
 # ── FL Server ─────────────────────────────────────────────────────────────────
 
 start_fl_server() {
-    local min_clients="$1" noise="$2" rounds="$3" strategy="${4:-fedprox}" mu="${5:-0.01}"
+    local min_clients="$1" noise="$2" rounds="$3" strategy="${4:-fedprox}" mu="${5:-0.01}" lr="${6:-5e-5}"
     export FL_MIN_CLIENTS="$min_clients" FL_NUM_ROUNDS="$rounds" FL_NOISE_MULTIPLIER="$noise"
-    export FL_STRATEGY="$strategy" FL_LEARNING_RATE=5e-5 FL_NUM_EPOCHS=1 FL_PROXIMAL_MU="$mu"
+    export FL_STRATEGY="$strategy" FL_LEARNING_RATE="$lr" FL_NUM_EPOCHS=1 FL_PROXIMAL_MU="$mu"
     pkill -f "fl-server" 2>/dev/null || true
     sleep 2
     : > "$LOGS/fl_server_current.log"
@@ -321,7 +322,8 @@ run_fl() {
 
     log "FL run: tag=$tag backend=$backend silos=$n_silos strategy=$strategy noise=$noise rounds=$rounds seed=$seed mu=$mu"
 
-    start_fl_server "$n_silos" "$noise" "$rounds" "$strategy" "$mu"
+    local fl_lr="5e-5"; [ "$backend" = "bert" ] && fl_lr="2e-4"
+    start_fl_server "$n_silos" "$noise" "$rounds" "$strategy" "$mu" "$fl_lr"
 
     if [ "$backend" = "bert" ]; then
         export FL_BATCH_SIZE="$BERT_BATCH_SIZE" FL_GRADIENT_ACCUM_STEPS="$BERT_GRADIENT_ACCUM"
@@ -399,10 +401,10 @@ run_calibration() {
     local tag="calibration_${backend}"
     log ">>> GRAD NORM CALIBRATION: backend=$backend"
 
-    start_fl_server 1 0.0 1 fedprox 0.01
-
     local calib_seq_len=512; [ "$backend" = "llm" ] && calib_seq_len=1024
     local bert_bm="full"; [ "$backend" = "bert" ] && bert_bm="top50"
+    local calib_lr="5e-5"; [ "$backend" = "bert" ] && calib_lr="2e-4"
+    start_fl_server 1 0.0 1 fedprox 0.01 "$calib_lr"
 
     FL_MAX_EXAMPLES=50 FL_CALIBRATE_GRAD_NORM=true FL_NOISE_MULTIPLIER=0.0 \
     MODEL_BACKEND="$backend" BERT_BENCHMARK="$bert_bm" \
