@@ -65,7 +65,7 @@ JUDGES: list[dict[str, str]] = [
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 JUDGE_PROMPT_TEMPLATE = """\
-You are an expert clinical physician evaluating an AI-generated hospital discharge summary.
+You are an expert clinical physician evaluating a generated hospital discharge summary.
 
 ## Reference note (ground truth)
 {reference}

@@ -1,6 +1,6 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Extensões YAML — evitam repetição nas definições dos silos AI.
-# As chaves x-* são ignoradas pelo Docker Compose e servem apenas como âncoras.
+# YAML extensions — reduce repetition in silo definitions.
+# x-* keys are ignored by Docker Compose and serve only as anchors.
 # ─────────────────────────────────────────────────────────────────────────────
 
 x-ai-client-base: &ai-client-base
@@ -15,7 +15,7 @@ x-ai-client-base: &ai-client-base
     fl_server:
       condition: service_healthy
   volumes:
-    - ./etl_worker/data:/app/data:ro   # bind mount: label_index.json e bundles gerados no host
+    - ./etl_worker/data:/app/data:ro   # bind mount: label_index.json and FHIR bundles generated on host
     - model_cache:/root/.cache/huggingface
     - gpu_sync:/var/gpu_sync    # arquivo de lock compartilhado entre silos
   deploy:
@@ -52,8 +52,8 @@ x-silo-env: &silo-env
   MIMIC_HOSP_DIR: "${MIMIC_HOSP_DIR:-/physionet/mimiciv/3.1/hosp}"
   MIMIC_NOTE_DIR: "${MIMIC_NOTE_DIR:-/physionet/mimic-iv-note/2.2/note}"
   BERT_LABEL_INDEX_PATH: "${BERT_LABEL_INDEX_PATH:-/app/data/label_index.json}"
-  # Parallel GPU: true = silos rodam simultaneamente (seguro para modelos <3B).
-  # Defina FL_PARALLEL_GPU=false se usar modelo ≥3B ou se ocorrer OOM.
+  # Parallel GPU: true = silos run concurrently (safe for models <3B).
+  # Set FL_PARALLEL_GPU=false for models ≥3B or if OOM errors occur.
   FL_PARALLEL_GPU: "${FL_PARALLEL_GPU:-true}"
   # Dirichlet heterogeneity α sweep: 0.1 (high Non-IID) | 0.5 | 1.0 (near-IID)
   ETL_DIRICHLET_ALPHA: "${ETL_DIRICHLET_ALPHA:-0.5}"
@@ -68,19 +68,20 @@ x-silo-env: &silo-env
 services:
 
   # ─────────────────────────────────────────────
-  # HAPI FHIR Server — validação e armazenamento
+  # FHIR R4 Server (Docker path: hapiproject/hapi Java image)
+  # For bare-metal, run_nodocker.sh uses fhir_server.py (Python stdlib).
   # ─────────────────────────────────────────────
   hapi_fhir:
     image: hapiproject/hapi:latest
     container_name: hapi_fhir
     environment:
       hapi.fhir.fhir_version: R4
-    # hapiproject/hapi é distroless (sem shell, sem wget, sem curl).
-    # A espera pelo boot do HAPI é responsabilidade da lógica de retry em etl_pipeline.post_bundle.
+    # hapiproject/hapi is distroless (no shell, no wget, no curl).
+    # Boot wait is handled by retry logic in etl_pipeline.post_bundle.
     network_mode: host
 
   # ─────────────────────────────────────────────
-  # FL Server — orquestrador Flower (SuperLink)
+  # FL Server — Flower SuperLink orchestrator
   # ─────────────────────────────────────────────
   fl_server:
     build:
@@ -89,14 +90,14 @@ services:
     container_name: fl_server
     ports:
       - "9091:9091"   # gRPC SuperLink
-      - "9092:9092"   # REST SuperLink (opcional)
-    restart: on-failure   # reinicia se crashar antes de receber o primeiro cliente
+      - "9092:9092"   # REST SuperLink (optional)
+    restart: on-failure   # restart if it crashes before the first client connects
     environment:
       FL_SERVER_ADDRESS: "0.0.0.0:9091"
       FL_MIN_CLIENTS: "${FL_MIN_CLIENTS:-5}"
       FL_NUM_ROUNDS: "${FL_NUM_ROUNDS:-10}"
-      FL_ROUND_TIMEOUT: "32400"   # 9h — com silos paralelos um round leva ~30 min; sequencial ~1h
-      FL_NOISE_MULTIPLIER: "${FL_NOISE_MULTIPLIER:-0}"   # DP desabilitado por padrão: σ=0.1 destrói adaptadores LoRA (~0.05 norma) com ruído 200× maior que o sinal; use FL_NOISE_MULTIPLIER=0.001 para DP simbólico
+      FL_ROUND_TIMEOUT: "32400"   # 9h — parallel silos ~30 min/round; sequential ~1h/round
+      FL_NOISE_MULTIPLIER: "${FL_NOISE_MULTIPLIER:-0}"   # DP off by default; use 0.5/1.0/2.0 for paper DP experiments
       FL_LEARNING_RATE: "${FL_LEARNING_RATE:-5e-5}"
       FL_STRATEGY: "${FL_STRATEGY:-fedprox}"
       FL_NUM_EPOCHS: "${FL_NUM_EPOCHS:-1}"
@@ -110,7 +111,7 @@ services:
     network_mode: host
 
   # ─────────────────────────────────────────────
-  # ETL Worker — extração e transformação FHIR
+  # ETL Worker — MIMIC-IV extraction and FHIR bundle generation
   # ─────────────────────────────────────────────
   etl_worker:
     build:
@@ -121,25 +122,24 @@ services:
       FHIR_SERVER_URL: "http://localhost:8080/fhir"
       ETL_BUNDLES_PATH: "/app/etl_worker/data/bundles"
       ETL_DIRICHLET_ALPHA: "${ETL_DIRICHLET_ALPHA:-0.5}"
-      PYTHONUNBUFFERED: "1"   # força flush imediato — sem TTY Python bufferiza stdout/stderr
+      PYTHONUNBUFFERED: "1"   # force immediate flush — Python buffers stdout without a TTY
     depends_on:
       hapi_fhir:
         condition: service_started
     volumes:
-      - ./etl_worker/data:/app/etl_worker/data   # bind mount: acesso aos bundles gerados no host
+      - ./etl_worker/data:/app/etl_worker/data   # bind mount: FHIR bundles generated on host
     network_mode: host
 
   # ─────────────────────────────────────────────
-  # AI Clients — 5 silos federados com GPU
+  # AI Clients — 5 federated silos with GPU
   #
-  # Todos os silos compartilham a mesma GPU (RTX 3060 12 GB). O volume
-  # "gpu_sync" fornece o arquivo de lock (fcntl.flock) que serializa o
-  # acesso — apenas um silo usa a GPU por vez. FL_PARALLEL_GPU=false
-  # garante a serialização quando o modelo base > 3B.
+  # All silos share the same GPU (RTX 3060 12 GB). The "gpu_sync" volume
+  # provides an fcntl.flock file that serialises GPU access — only one
+  # silo uses the GPU at a time. Set FL_PARALLEL_GPU=false for models ≥3B.
   #
-  # Particionamento Dirichlet(α): gerado pelo mimic_builder.py com
+  # Dirichlet(α) partitioning: generated by mimic_builder.py with
   #   --n-silos 5 --dirichlet-alpha <α>
-  # Silo 0..4 → partições 0..4 (heterogeneidade controlada por α)
+  # Silo 0..4 → partitions 0..4 (heterogeneity controlled by α)
   # ─────────────────────────────────────────────
   ai_client_silo_0:
     <<: *ai-client-base
@@ -178,4 +178,4 @@ services:
 
 volumes:
   model_cache:
-  gpu_sync:     # arquivo de lock para serialização do acesso à GPU entre silos
+  gpu_sync:     # lock file for serialising GPU access across silos

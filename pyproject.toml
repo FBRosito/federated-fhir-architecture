@@ -14,7 +14,7 @@ members = [
     "evaluation",
 ]
 
-# PyTorch CUDA 12.4 — usado em ambientes com GPU (Linux/Windows)
+# PyTorch CUDA 12.4 — required for GPU environments (Linux/Windows)
 [[tool.uv.index]]
 name = "pytorch-cu124"
 url = "https://download.pytorch.org/whl/cu124"
