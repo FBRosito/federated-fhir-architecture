@@ -445,17 +445,17 @@ read_calib_C0() {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PRE-FLIGHT: ensure HAPI FHIR is up and data is loaded
-# HAPI FHIR has no persistent volume — data must be reloaded after every
+# PRE-FLIGHT: ensure FHIR server is up and data is loaded
+# The FHIR server has no persistent volume — data must be reloaded after every
 # container restart via the ETL worker.
 # ═══════════════════════════════════════════════════════════════════════════════
-log "Ensuring HAPI FHIR is running..."
+log "Ensuring FHIR server is running..."
 docker compose up -d hapi_fhir
-log "Waiting for HAPI FHIR at http://localhost:8080/fhir/metadata ..."
+log "Waiting for FHIR server at http://localhost:8080/fhir/metadata ..."
 until curl -sf http://localhost:8080/fhir/metadata > /dev/null 2>&1; do
     printf '.'; sleep 5
 done
-echo " HAPI FHIR ready."
+echo " FHIR server ready."
 
 # Check if FHIR already has data (count Patient resources).
 # If fewer than 1000 patients, the database is effectively empty and the ETL
@@ -473,8 +473,8 @@ if [ "${FHIR_PATIENT_COUNT:-0}" -lt 1000 ] 2>/dev/null; then
         printf '.'; sleep 5; i=$((i+1))
     done
     echo " ETL Worker: $(docker inspect --format='{{.State.Status}} (exit={{.State.ExitCode}})' etl_worker 2>/dev/null || echo gone)."
-    # Wait for HAPI FHIR search index to reflect the new data (async indexing).
-    log "Waiting for HAPI FHIR to index loaded patients (max 3 min)..."
+    # Wait for FHIR server search index to reflect the new data (async indexing).
+    log "Waiting for FHIR server to index loaded patients (max 3 min)..."
     j=0
     while [ $j -lt 36 ]; do
         FHIR_PATIENT_COUNT=$(curl -sf "http://localhost:8080/fhir/Patient?_count=1&_summary=count" 2>/dev/null \

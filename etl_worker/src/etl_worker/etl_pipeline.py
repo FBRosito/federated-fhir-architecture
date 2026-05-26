@@ -3,7 +3,7 @@ etl_pipeline.py
 ---------------
 Reads Non-IID partitioned clinical evolutions from CSV and converts them to
 FHIR R5 resources (Patient, Condition, Composition, DocumentReference), sending
-a Transaction Bundle via POST to the HAPI FHIR server for validation.
+a Transaction Bundle via POST to the FHIR R4 server for validation.
 
 Non-IID partitioning:
   - Partition 0 (cardiology)      → predominance of cardiovascular conditions
@@ -15,7 +15,7 @@ Usage:
     uv run python etl_worker/etl_pipeline.py [--partition <id>] [--data <path>]
 
 Environment variables:
-    FHIR_SERVER_URL   HAPI FHIR base URL (default: http://localhost:8080/fhir)
+    FHIR_SERVER_URL   FHIR R4 base URL (default: http://localhost:8080/fhir)
     ETL_PARTITION_ID  Partition to process; -1 processes all (default: -1)
 """
 
@@ -224,7 +224,7 @@ def build_composition(
 
     # Section text formatted as minimal XHTML (required by FHIR Narrative).
     # html.escape() is mandatory: clinical notes may contain < and > (e.g. "trop < 0.01")
-    # which break HAPI FHIR's XML parser without escaping.
+    # which break FHIR R4's XML parser without escaping.
     xhtml_text = (
         f'<div xmlns="http://www.w3.org/1999/xhtml">'
         f"<p><b>Evolução:</b> {html.escape(str(row['clinical_text']))}</p>"
@@ -376,7 +376,7 @@ def build_transaction_bundle(
         "entry": entries,
     })
 
-# ── HAPI FHIR submission ───────────────────────────────────────────────────────
+# ── FHIR R4 submission ───────────────────────────────────────────────────────
 
 def _post_payload(
     payload: bytes,
@@ -432,7 +432,7 @@ def _post_payload(
                 raise
 
             log.warning(
-                "Attempt %d [%s] — HAPI FHIR unavailable (%s). "
+                "Attempt %d [%s] — FHIR R4 unavailable (%s). "
                 "Retrying in %.0f s (%.0f s remaining).",
                 attempt, label, exc, retry_interval, remaining,
             )
@@ -469,14 +469,14 @@ def _summarise_response(resp: dict[str, Any], patient_id: str) -> None:
 
 def run_from_bundles(bundles_dir: Path, fhir_url: str) -> None:
     """
-    Loads pre-built FHIR bundles (bundle_NNNNNN.json) and sends them to HAPI FHIR.
+    Loads pre-built FHIR bundles (bundle_NNNNNN.json) and sends them to FHIR R4.
 
     Does not rebuild any FHIR resource — only POSTs the existing bytes.
-    Allows reloading HAPI FHIR after a `make clean` without re-reading MIMIC.
+    Allows reloading FHIR R4 after a `make clean` without re-reading MIMIC.
 
     Args:
         bundles_dir: Directory containing bundle_*.json files.
-        fhir_url:    HAPI FHIR server base URL.
+        fhir_url:    FHIR R4 server base URL.
     """
     bundle_files = sorted(bundles_dir.glob("bundle_*.json"))
     if not bundle_files:
@@ -513,7 +513,7 @@ def process_row(row: pd.Series, fhir_url: str, dry_run: bool = False) -> bool:
 
     Args:
         row:      pandas DataFrame row.
-        fhir_url: HAPI FHIR base URL (e.g. http://localhost:8080/fhir).
+        fhir_url: FHIR R4 base URL (e.g. http://localhost:8080/fhir).
         dry_run:  If True, serialises the Bundle but does not send it.
 
     Returns:
@@ -546,7 +546,7 @@ def process_row(row: pd.Series, fhir_url: str, dry_run: bool = False) -> bool:
         log.error("HTTP %s processing %s: %s",
                   exc.response.status_code, row["patient_id"], exc.response.text[:300])
     except httpx.ConnectError:
-        log.error("No connection to FHIR at %s. Check that the hapi_fhir container is running.", fhir_url)
+        log.error("No connection to FHIR at %s. Check that the fhir server is running.", fhir_url)
     except Exception as exc:  # noqa: BLE001
         log.exception("Unexpected error processing %s: %s", row["patient_id"], exc)
 
@@ -564,7 +564,7 @@ def run(
 
     Args:
         data_path:    Path to the clinical evolutions CSV.
-        fhir_url:     HAPI FHIR server base URL.
+        fhir_url:     FHIR R4 server base URL.
         partition_id: Partition to process (-1 = all).
         dry_run:      Validate without sending to the server.
     """
@@ -594,7 +594,7 @@ def run(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="ETL: loads pre-built FHIR bundles or builds from CSV → HAPI FHIR",
+        description="ETL: loads pre-built FHIR bundles or builds from CSV → FHIR R4",
     )
     parser.add_argument(
         "--bundles-dir",
@@ -621,7 +621,7 @@ def main() -> None:
     parser.add_argument(
         "--fhir-url",
         default=os.getenv("FHIR_SERVER_URL", "http://localhost:8080/fhir"),
-        help="HAPI FHIR server base URL.",
+        help="FHIR R4 server base URL.",
     )
     parser.add_argument(
         "--dry-run",

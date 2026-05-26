@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# run_nodocker.sh — Experiment matrix identical to run_experiments.sh but without Docker.
-# Requires: Java ≥ 17, uv, CUDA-enabled GPU, HAPI FHIR CLI jar (auto-downloaded).
+# run_nodocker.sh — Experiment matrix without Docker.
+# Requires: uv, CUDA-enabled GPU. No Java required (uses Python FHIR R4 in-memory server).
 #
 # Usage: bash run_nodocker.sh [--smoke] [--mini] [--exp {A|B|all}]
 #   --smoke   local validation: 20 examples, 2 rounds, 1 seed (~2-3h)
@@ -79,7 +79,7 @@ FHIR_SERVER_SCRIPT="fhir_server.py"   # minimal Python FHIR server (stdlib only)
 
 # ── FHIR server (Python, no Docker / no Java required) ────────────────────────
 
-start_hapi_fhir() {
+start_fhir_server() {
     # Kill any stale process on port 8080 before starting fresh
     pkill -f "$FHIR_SERVER_SCRIPT" 2>/dev/null || true
     fuser -k 8080/tcp 2>/dev/null || true
@@ -88,19 +88,19 @@ start_hapi_fhir() {
     py="${VIRTUAL_ENV:-.venv}/bin/python"
     [ -x "$py" ] || py="$(command -v python3)"
     nohup "$py" "$FHIR_SERVER_SCRIPT" 8080 \
-        > "$LOGS/hapi_fhir.log" 2>&1 &
-    echo $! > /tmp/hapi_fhir.pid
-    log "FHIR server starting (PID=$(cat /tmp/hapi_fhir.pid))..."
+        > "$LOGS/fhir_server.log" 2>&1 &
+    echo $! > /tmp/fhir_server.pid
+    log "FHIR server starting (PID=$(cat /tmp/fhir_server.pid))..."
 }
 
-wait_hapi_ready() {
+wait_fhir_ready() {
     log "Waiting for FHIR server at http://localhost:8080/fhir/metadata..."
     local tries=0
     until curl -sf http://localhost:8080/fhir/metadata > /dev/null 2>&1; do
         printf '.'; sleep 2
         tries=$((tries+1))
         if [ $tries -gt 15 ]; then
-            log "ERROR: FHIR server failed to start after 30s. Check $LOGS/hapi_fhir.log"
+            log "ERROR: FHIR server failed to start after 30s. Check $LOGS/fhir_server.log"
             exit 1
         fi
     done
@@ -450,11 +450,11 @@ run_experiment_matrix() {
 }
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PRE-FLIGHT — start HAPI FHIR and ensure data is loaded
+# PRE-FLIGHT — start FHIR server and ensure data is loaded
 # ═══════════════════════════════════════════════════════════════════════════════
-log "Starting HAPI FHIR..."
-start_hapi_fhir
-wait_hapi_ready
+log "Starting FHIR server..."
+start_fhir_server
+wait_fhir_ready
 
 FHIR_PATIENT_COUNT=$(curl -sf "http://localhost:8080/fhir/Patient?_count=1&_summary=count" 2>/dev/null \
     | python3 -c "import sys,json; print(json.load(sys.stdin).get('total',0))" 2>/dev/null || echo "0")
@@ -467,7 +467,7 @@ if [ "${FHIR_PATIENT_COUNT:-0}" -lt 1000 ] 2>/dev/null; then
     PYTHONUNBUFFERED=1 \
     uv run etl-worker
     log "ETL worker completed."
-    log "Waiting for HAPI FHIR to index loaded patients (max 3 min)..."
+    log "Waiting for FHIR server to index loaded patients (max 3 min)..."
     j=0
     while [ $j -lt 36 ]; do
         FHIR_PATIENT_COUNT=$(curl -sf "http://localhost:8080/fhir/Patient?_count=1&_summary=count" 2>/dev/null \

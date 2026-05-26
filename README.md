@@ -28,9 +28,9 @@ The system implements a **Privacy-Preserving Federated e-Health Architecture** o
 
 ### Tier 1 — Data Interoperability Tier
 
-**Components:** HAPI FHIR (HL7 R4, port 8080) + ETL Worker
+**Components:** FHIR R4 in-memory server (Python stdlib, port 8080) + ETL Worker
 
-Isolates AI from legacy hospital database complexity. The ETL Worker transforms relational tables (MIMIC-IV CSV) into standardized HL7 FHIR R4 Transaction Bundles (Patient + Condition + DocumentReference), then loads them into the HAPI FHIR server. Any hospital that speaks FHIR can plug into this federated network without changing a line of AI code.
+Isolates AI from legacy hospital database complexity. The ETL Worker transforms relational tables (MIMIC-IV CSV) into standardized HL7 FHIR R4 Transaction Bundles (Patient + Condition + DocumentReference), then loads them into the FHIR R4 server. Any hospital that speaks FHIR can plug into this federated network without changing a line of AI code.
 
 ### Tier 2 — Federated Orchestration Tier
 
@@ -42,7 +42,7 @@ Manages the star topology. Never touches patient data. Synchronizes FL training 
 
 **Components:** AI Clients (silo_0..N), local GPU, FHIR Consumer, PEFT Module
 
-Each silo runs inside the hospital's firewall. It downloads its assigned data partition via paginated REST calls to the local HAPI FHIR instance (`/fhir/Condition`, `/fhir/DocumentReference`). The foundation model (Llama-3.2 in NF4 4-bit or PubMedBERT) stays in local GPU memory and **never traverses the network**. Only the LoRA adapter deltas (~3–8 MB for 1B model, ~40 MB for 8B) are sent back — a 99.9% reduction in network bandwidth vs. sending the full model.
+Each silo runs inside the hospital's firewall. It downloads its assigned data partition via paginated REST calls to the local FHIR R4 server (`/fhir/Condition`, `/fhir/DocumentReference`). The foundation model (PubMedBERT for Experiment A; optionally Llama-3.2 for Experiment B) stays in local GPU memory and **never traverses the network**. Only the LoRA adapter deltas (~15 MB for PubMedBERT) are sent back — a 99.9% reduction in network bandwidth vs. sending the full model.
 
 ### Tier 4 — Cross-Cutting Privacy Layer
 
@@ -66,7 +66,7 @@ CSV (MIMIC-IV)
                    │ HTTP POST /fhir
                    ▼
      ┌─────────────────────────┐
-     │       hapi_fhir         │
+     │     fhir_r4_server      │
      │  HL7 FHIR R4  :8080     │
      │  Resources: Patient,    │
      │  Condition,             │
@@ -101,7 +101,7 @@ CSV (MIMIC-IV)
 | Step | Actor | Action |
 |------|-------|--------|
 | **1. Initialization** | FL Server | Initializes empty LoRA weight vector → broadcasts to selected silos |
-| **2. Data Fetching** | AI Client | Queries local HAPI FHIR; builds dataset **in memory** (no disk writes) |
+| **2. Data Fetching** | AI Client | Queries local FHIR R4 server; builds dataset **in memory** (no disk writes) |
 | **3. DP Local Training** | AI Client | Foundation model frozen; gradients flow only through LoRA; Opacus clips (≤ C₀) + injects Gaussian noise (σ·C₀); 1 local epoch |
 | **4. Transmission** | AI Client | Sends privatized LoRA delta back to server via gRPC (~3–8 MB for 1B model) |
 | **5. Aggregation** | FL Server | FedProx weighted average of deltas; RDP accountant updates (ε, δ); next round begins |
@@ -110,9 +110,9 @@ CSV (MIMIC-IV)
 
 ## Experiments
 
-Two independent experiments, both using federated learning with the same infrastructure.
+**Experiment A (ICD-10 coding with PubMedBERT) is the paper experiment.** Experiment B (discharge summary with Llama-3.2) is an extension included for future work and is not evaluated in the paper.
 
-| | **Experiment A — ICD-10 Coding** | **Experiment B — Discharge Summary** |
+| | **Experiment A — ICD-10 Coding** *(paper)* | **Experiment B — Discharge Summary** *(extension)* |
 |---|---|---|
 | **Task** | Multi-label ICD-10 code prediction from clinical progress notes | Abstractive discharge summary generation from structured clinical data |
 | **Model** | PubMedBERT-base (110M, no quantization) + PLM-ICD head + LoRA (r=8) | Llama-3.2-1B (NF4 4-bit, BitsAndBytes) + LoRA (r=16) |
@@ -234,12 +234,12 @@ All metrics follow Mullenbach et al. (2018) and are computed on the held-out tes
 
 | Dependency | Min version | Purpose |
 |------------|-------------|---------|
-| Docker + Docker Compose | 24.0 / 2.20 | Service orchestration |
-| NVIDIA Container Toolkit | 1.14 | GPU passthrough to `ai_client` |
 | [uv](https://docs.astral.sh/uv/) | 0.5+ | Python package management |
 | NVIDIA GPU + CUDA ≥ 12.4 | **≥ 12 GB VRAM** | Model training (ai_client only) |
 | Python | 3.13 | Runtime (managed by uv) |
-| HuggingFace token | — | Gated Llama-3 model access |
+| Docker + Docker Compose | 24.0 / 2.20 | Optional — for containerised deployment |
+| NVIDIA Container Toolkit | 1.14 | Optional — GPU passthrough in Docker |
+| HuggingFace token | — | Optional — only required for Experiment B (gated Llama-3 model) |
 
 ### 1. Clone and install
 
@@ -249,13 +249,13 @@ cd federated-fhir-architecture
 uv sync --frozen
 ```
 
-### 2. Configure tokens
+### 2. Configure tokens (Experiment A requires no tokens)
 
 ```bash
-# HuggingFace token (required for Llama-3)
+# HuggingFace token — only required for Experiment B (gated Llama-3 model)
 export HF_TOKEN=hf_your_token_here
 
-# OpenRouter API key (required for LLM-as-judge post-eval only)
+# OpenRouter API key — only required for LLM-as-judge post-evaluation (Experiment B)
 export OPENROUTER_API_KEY=sk-or-your_key_here
 ```
 
@@ -278,7 +278,7 @@ python3 -c "import json; d=json.load(open('experiment_logs/fl_fedprox_alpha0.5_n
 ### 4. Full stack with Docker Compose
 
 ```bash
-# Start infrastructure (HAPI FHIR + fl_server + etl_worker)
+# Start infrastructure (FHIR R4 server + fl_server + etl_worker)
 make up-infra
 
 # Start AI clients (foreground — live logs)
@@ -291,14 +291,17 @@ make logs
 make down
 ```
 
-### 5. Run full experiments (cloud — recommended)
-
-See [`docs/deploy.md`](./docs/deploy.md) for A100 / H100 cloud deployment instructions.
+### 5. Run paper experiments (Experiment A)
 
 ```bash
-# Standard run: 3 seeds × 4 FL configs × 3 DP configs = 12 experiments
-bash run_experiments.sh --exp all
+# Paper experiment: 3 seeds × 6 configurations (FedProx/FedAvg × no-DP/σ=0.5/1.0/2.0)
+bash run_nodocker.sh --exp A
+
+# Or with Docker
+bash run_experiments.sh --exp A
 ```
+
+See [`docs/deploy.md`](./docs/deploy.md) for GPU cloud deployment instructions.
 
 ### 6. Generate plots
 
@@ -326,7 +329,7 @@ cp .env.example .env
 ### 2. Start infrastructure
 
 ```bash
-make up-infra   # starts HAPI FHIR + fl_server + etl_worker; blocks until all healthy
+make up-infra   # starts FHIR R4 server + fl_server + etl_worker; blocks until all healthy
                 # auto-triggers ETL reload if FHIR has fewer than 1000 patients
 ```
 
@@ -378,11 +381,11 @@ docker compose up fl_server ai_client_silo_0 ai_client_silo_1 \
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `FHIR_SERVER_URL` | `http://hapi-fhir:8080/fhir` | HAPI FHIR base URL (Tier 1) |
+| `FHIR_SERVER_URL` | `http://localhost:8080/fhir` | FHIR R4 server base URL (Tier 1) |
 | `FL_SERVER_ADDRESS` | `fl-server:9091` | Orchestration Tier gRPC address |
-| `MODEL_BACKEND` | `llm` | Experiment selector: `llm` (Exp B), `bert` (Exp A), `llm-summarization` |
-| `MODEL_NAME` | `meta-llama/Llama-3.1-8B` | Any HuggingFace model ID |
-| `HF_TOKEN` | — | HuggingFace token (required for gated Llama models) |
+| `MODEL_BACKEND` | `bert` | Experiment selector: `bert` (Exp A — paper), `llm` (Exp B — extension), `llm-summarization` |
+| `MODEL_NAME` | `microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract-fulltext` | Any HuggingFace model ID |
+| `HF_TOKEN` | — | HuggingFace token (optional — only for gated Llama models, Exp B) |
 | `MAX_SEQ_LEN` | `512` | Max token sequence length |
 | `ETL_PARTITION_ID` | `0..4` (per silo) | Dirichlet partition assigned to this silo |
 | `FL_BATCH_SIZE` | `8` | Local training batch size |
@@ -407,7 +410,7 @@ docker compose up fl_server ai_client_silo_0 ai_client_silo_1 \
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `FHIR_SERVER_URL` | `http://localhost:8080/fhir` | HAPI FHIR target URL |
+| `FHIR_SERVER_URL` | `http://localhost:8080/fhir` | FHIR R4 server target URL |
 | `ETL_PARTITION_ID` | `-1` | Partition to load (-1 = all) |
 | `ETL_DATA_PATH` | `etl_worker/data/clinical_evolutions.csv` | Input CSV path |
 
@@ -422,29 +425,31 @@ docker compose up fl_server ai_client_silo_0 ai_client_silo_1 \
 
 ## Expected Results
 
-Target numbers based on the MIMIC-IV literature baseline (centralised, full data).
+Results from the paper (MIMIC-IV v3.1, top-50 ICD-10 subset, R=20 rounds, K=5 silos, α=0.5, seeds 42/43/44).
 
-### Experiment A — ICD-10 Coding (MIMIC-IV-full, top-50 subset)
+### Experiment A — ICD-10 Coding *(paper results)*
 
-| Configuration | Micro-F1@5 | Macro-F1@5 | AUC-ROC |
-|---------------|-----------|-----------|---------|
-| Centralised (no FL) | ~0.60–0.65 | ~0.45–0.50 | ~0.82–0.86 |
-| FedProx (α=0.5, no DP) | ~0.58–0.63 | ~0.43–0.48 | ~0.80–0.84 |
-| FedProx (α=0.5, σ=0.9) | ~0.54–0.59 | ~0.40–0.45 | ~0.77–0.81 |
-| FedProx (α=0.1, no DP) | ~0.50–0.56 | ~0.36–0.42 | ~0.74–0.79 |
+| Configuration | Micro-F1@5 | Notes |
+|---------------|-----------|-------|
+| Centralised (upper bound, no federation) | 0.409 | Non-federated baseline |
+| FL FedProx, no DP (σ=0) | 0.315 | 77% of centralised |
+| FL FedAvg, no DP (σ=0) | 0.311 | Comparable to FedProx |
+| FL FedProx + DP σ=0.5 (ε≈4.38) | 0.115 | Light privacy |
+| FL FedProx + DP σ=1.0 (ε≈2.29) | 0.109 | Moderate privacy |
+| FL FedProx + DP σ=2.0 (ε≈17.37) | 0.102 | Strong privacy (WOR subsampling) |
 
-> Mullenbach et al. (2018) PLM-ICD baseline (centralised, MIMIC-III-full): Micro-F1@8 ≈ 0.67, AUC-ROC ≈ 0.92.
-> FL typically incurs a 3–8 pp gap vs centralised; DP adds a further 3–6 pp gap (budget-dependent).
+> The 63.5–67.6% relative Micro-F1 drop under DP is dominated by per-sample gradient clipping (C₀=1.0), not noise injection.
+> All results: mean over 3 seeds; 95% bootstrap CI (B=10,000 resamples).
 
-### Experiment B — Discharge Summary (MIMIC-IV-Note)
+### Experiment B — Discharge Summary *(extension, not evaluated in the paper)*
 
 | Configuration | ROUGE-1 | ROUGE-L | BERTScore-F1 | LLM-judge |
 |---------------|---------|---------|-------------|-----------|
 | Centralised (no FL) | ~0.38–0.45 | ~0.30–0.36 | ~0.82–0.87 | ~3.6–4.0 |
 | FedProx (α=0.5, no DP) | ~0.36–0.43 | ~0.28–0.34 | ~0.80–0.85 | ~3.4–3.8 |
-| FedProx (α=0.5, σ=0.9) | ~0.31–0.38 | ~0.24–0.30 | ~0.76–0.81 | ~3.0–3.5 |
+| FedProx (α=0.5, σ=1.0) | ~0.31–0.38 | ~0.24–0.30 | ~0.76–0.81 | ~3.0–3.5 |
 
-> BioNLP literature baseline (abstractive clinical summarization): ROUGE-1 ≈ 0.40–0.48, ROUGE-L ≈ 0.30–0.38.
+> Experiment B numbers are from preliminary runs on `experiment_results_vastai/` and are not reported in the paper.
 
 ---
 
@@ -472,14 +477,14 @@ The base model weights (frozen NF4 parameters) are excluded from Opacus via `req
 
 ### Privacy Budget per Configuration
 
-The ε values below are computed by the RDP accountant after 5 FL rounds with subsampling rate q=0.1 (cumulative ε over all rounds):
+The ε values below are computed by the RDP accountant after R=20 FL rounds with WOR subsampling rate q=batch/n_local (cumulative ε over all rounds):
 
 | σ | Rounds | ε (δ=1e-5) | Interpretation |
 |---|--------|-----------|----------------|
 | 0.0 | any | ∞ | No privacy |
-| 0.5 | 5 | ~8.7 | Weak DP |
-| 0.9 | 5 | ~4.3 | Moderate DP |
-| 2.0 | 5 | ~2.1 | Strong DP |
+| 0.5 | 20 | ≈4.38 | Light DP |
+| 1.0 | 20 | ≈2.29 | Moderate DP |
+| 2.0 | 20 | ≈17.37 | Strong DP (WOR accounting) |
 
 ### Gradient Inversion Evaluation
 
@@ -512,10 +517,10 @@ federated-fhir-architecture/
 │   ├── src/ai_client/
 │   │   ├── __init__.py          # Entry point: uv run ai-client
 │   │   ├── fl_client.py         # FHIRFederatedClient (NumPyClient)
-│   │   ├── model_setup.py       # Llama NF4 4-bit + LoRA (Exp B)
-│   │   ├── model_setup_bert.py  # PubMedBERT + PLM-ICD + LoRA (Exp A)
-│   │   ├── fhir_consumer.py     # FHIR → TrainingExample (Exp B/LLM)
+│   │   ├── model_setup_bert.py  # PubMedBERT + PLM-ICD + LoRA (Exp A — paper)
+│   │   ├── model_setup.py       # Llama NF4 4-bit + LoRA (Exp B — extension)
 │   │   ├── fhir_consumer_bert.py          # FHIR → BERTInput (Exp A)
+│   │   ├── fhir_consumer.py               # FHIR → TrainingExample (Exp B/LLM)
 │   │   ├── fhir_consumer_summarization.py # FHIR → SummarizationExample (Exp B)
 │   │   └── centralized_baseline.py        # Non-FL baseline for comparison
 │   ├── Dockerfile
@@ -534,16 +539,16 @@ federated-fhir-architecture/
 │   │   ├── metrics_logger.py        # FederatedRunLogger + GPUTimer
 │   │   ├── icd_metrics.py           # Mullenbach 2018 metrics (micro-F1, AUC-ROC)
 │   │   ├── summarization_metrics.py # ROUGE-1/2/L + BERTScore(PubMedBERT)
-│   │   ├── llm_judge.py             # LLM-as-judge ensemble (Qwen + Gemma + DeepSeek)
+│   │   ├── llm_judge.py             # LLM-as-judge ensemble (Exp B extension)
 │   │   ├── statistical_analysis.py  # Bootstrap CI + Wilcoxon test
-│   │   ├── plots.py                 # Publication figures (IEEE/JAMIA style)
-│   │   ├── fhir_benchmark.py        # HAPI FHIR latency + completeness benchmark
-│   │   └── gradient_inversion.py    # DLG attack implementation
+│   │   ├── plots.py                 # Publication figures (IEEE style)
+│   │   ├── fhir_benchmark.py        # FHIR server latency + completeness benchmark
+│   │   └── gradient_inversion.py    # DLG attack implementation (Zhu et al. 2019)
 │   └── pyproject.toml
 │
 ├── docs/
-│   ├── decisoes_de_arquitetura.md  # Architecture decision records (Portuguese)
-│   └── deploy.md                   # Cloud deployment guide (A100/H100)
+│   ├── architecture.md             # System architecture documentation
+│   └── deploy.md                   # GPU cloud deployment guide
 ├── run_experiments.sh           # Full experiment orchestration (12 configs)
 ├── Makefile                     # make setup / up-infra / up-ai / logs / down / clean
 ├── docker-compose.yml           # Multi-service stack definition
@@ -557,14 +562,15 @@ federated-fhir-architecture/
 ## Citation
 
 ```bibtex
-@article{rosito2026federated,
-  title   = {Federated Learning over HL7 FHIR Clinical Data with Differential Privacy:
-             ICD-10 Coding and Discharge Summary Generation},
-  author  = {Rosito, Fernando B. and {others}},
-  journal = {Journal of the American Medical Informatics Association},
-  year    = {2026},
-  note    = {Under review},
-  url     = {https://github.com/fbrosito/federated-fhir-architecture},
+@inproceedings{rosito2025herald,
+  title     = {{HERALD}: Healthcare fEderated leaRning Architecture with {LoRA}
+               and Differential-privacy},
+  author    = {Rosito, Fernando B.},
+  booktitle = {Proceedings of the IEEE International Conference on e-Health Networking,
+               Application and Services (Healthcom)},
+  year      = {2025},
+  note      = {Under review},
+  url       = {https://github.com/fbrosito/federated-fhir-architecture},
 }
 ```
 

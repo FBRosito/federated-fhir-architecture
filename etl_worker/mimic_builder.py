@@ -4,11 +4,11 @@ mimic_builder.py — Builds FHIR bundles from MIMIC-IV v3.1.
 
 Reads the `hosp/` (and optionally `icu/`) modules of MIMIC-IV and generates a
 directory of pre-assembled FHIR Transaction Bundle JSON files
-(bundle_NNNNNN.json), ready for direct upload to HAPI FHIR without any further
+(bundle_NNNNNN.json), ready for direct upload to FHIR R4 without any further
 reprocessing.
 
 This decouples heavy MIMIC data extraction (reading ~10 GB, ~5-15 min) from
-loading into HAPI FHIR (POST of JSONs in ~1-2 min), which can be repeated on
+loading into FHIR R4 (POST of JSONs in ~1-2 min), which can be repeated on
 each `make clean` / `make up-infra` without additional cost.
 
 Operation mode (selected automatically):

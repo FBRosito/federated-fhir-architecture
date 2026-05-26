@@ -7,7 +7,7 @@ Routed by MODEL_BACKEND:
   'bert' → PubMedBERT + per-label attention + BCEWithLogitsLoss (Experiment A)
   other  → Llama + text-generation cross-entropy (Experiment B)
 
-Both backends read MIMIC-IV data directly from CSVs (bypassing HAPI FHIR),
+Both backends read MIMIC-IV data directly from CSVs (bypassing FHIR R4),
 apply the same filters as mimic_builder.py, and train with a continuous
 optimiser across epochs — no federated communication overhead.
 

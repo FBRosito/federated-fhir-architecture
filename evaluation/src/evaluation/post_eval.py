@@ -297,7 +297,7 @@ def run_post_eval(
     Args:
         run_json_path:    Path to the run JSON from run_experiments.sh.
         checkpoint_dir:   Path to LoRA checkpoint directory.
-        fhir_url:         HAPI FHIR server URL.
+        fhir_url:         FHIR R4 server URL.
         base_model_name:  HuggingFace model ID for the base model.
         max_samples:      Total examples to generate for (0 = no limit).
         judge_samples:    Examples passed to LLM judges (random sample, default 150).
@@ -453,7 +453,7 @@ def main() -> None:
     parser.add_argument(
         "--fhir-url",
         default=_DEFAULT_FHIR_URL,
-        help="HAPI FHIR server base URL.",
+        help="FHIR R4 server base URL.",
     )
     parser.add_argument(
         "--base-model",

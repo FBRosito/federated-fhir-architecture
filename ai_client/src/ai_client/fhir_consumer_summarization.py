@@ -3,7 +3,7 @@ fhir_consumer_summarization.py
 -------------------------------
 FHIR consumer for Experiment B: discharge summary (Llama-3.2-3B).
 
-Fetches from HAPI FHIR:
+Fetches from FHIR R4:
   - Patient: demographics (gender, birthDate)
   - Condition: admission ICD-10 codes
   - DocumentReference (LOINC 11506-3): structured clinical text (model input)
@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import base64
 import logging
-import os
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -43,7 +42,7 @@ class SummarizationExample:
     (structured_prompt, reference_summary) pair for clinical summary fine-tuning.
 
     Attributes:
-        patient_ref:        Reference to the Patient resource in HAPI FHIR.
+        patient_ref:        Reference to the Patient resource in FHIR R4.
         structured_context: Structured clinical text (demographics + ICD + labs + meds).
         reference_summary:  Real discharge note — reference for ROUGE/BERTScore.
         icd10_codes:        List of all admission ICD-10 codes.
@@ -134,7 +133,7 @@ def fetch_summarization_examples(
     max_examples: int = 0,
 ) -> tuple[list[SummarizationExample], Any]:
     """
-    Fetches discharge summary examples from HAPI FHIR.
+    Fetches discharge summary examples from FHIR R4.
 
     For each patient with a discharge note DocumentReference (LOINC 18842-5),
     builds a SummarizationExample with:
@@ -142,7 +141,7 @@ def fetch_summarization_examples(
       - reference_summary:  text from the discharge note (LOINC 18842-5)
 
     Args:
-        fhir_url:      Base URL of the HAPI FHIR server.
+        fhir_url:      Base URL of the FHIR R4 server.
         patient_id:    Filter by specific patient (None = all).
         max_examples:  Cap on returned examples (0 = no limit). Useful for
                        smoke/dev runs; ROUGE/BERTScore should use 0 (full test set).

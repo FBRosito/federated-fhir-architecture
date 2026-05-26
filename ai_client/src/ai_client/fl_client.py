@@ -5,7 +5,7 @@ Flower FL client for the federated learning pipeline over FHIR data.
 
 Inherits from NumPyClient and orchestrates:
     - Lazy loading of quantized model + LoRA adapters (model_setup.py)
-    - Fetching Conditions and DocumentReferences from HAPI FHIR (fhir_consumer.py)
+    - Fetching Conditions and DocumentReferences from FHIR R4 (fhir_consumer.py)
     - Local training for one round (train_one_round from model_setup.py)
     - Local evaluation with perplexity, ICD-10 accuracy, or summarization metrics
 
@@ -19,7 +19,7 @@ Train/eval split:
     The split is fixed for consistency across rounds.
 
 Environment variables:
-    FHIR_SERVER_URL       Base URL of the HAPI FHIR server (default: http://localhost:8080/fhir)
+    FHIR_SERVER_URL       Base URL of the FHIR R4 server (default: http://localhost:8080/fhir)
     FL_SERVER_ADDRESS     Flower server address (default: fl_server:9091)
     ETL_PARTITION_ID      Non-IID partition to consume (-1 = all, default: -1)
     MODEL_NAME            HuggingFace model ID for the base model
@@ -463,14 +463,14 @@ def _compute_cumulative_epsilon(
 class FHIRFederatedClient(NumPyClient):
     """
     Federated client that:
-        1. Consumes FHIR resources (Condition + DocumentReference) from HAPI FHIR.
+        1. Consumes FHIR resources (Condition + DocumentReference) from FHIR R4.
         2. Loads the quantized model with LoRA adapters (lazy, only on first call
            to avoid OOM during parameter negotiation).
         3. Executes local training with global weights received from the server.
         4. Reports perplexity, ICD-10 accuracy, or summarization metrics.
 
     Args:
-        fhir_url:     Base URL of the HAPI FHIR server.
+        fhir_url:     Base URL of the FHIR R4 server.
         model_name:   HuggingFace model ID (e.g. meta-llama/...).
         partition_id: Non-IID partition to consume (-1 = all).
         max_length:   Maximum tokenization length.
@@ -589,7 +589,7 @@ class FHIRFederatedClient(NumPyClient):
     def _ensure_data(self) -> None:
         """Fetches FHIR examples and performs the train/eval split on first call.
 
-        Retries with exponential backoff when the HAPI FHIR server is not yet
+        Retries with exponential backoff when the FHIR R4 server is not yet
         ready (ConnectError) or when FHIR returned 0 examples (ETL still loading
         data). Waits up to 10 minutes total.
 

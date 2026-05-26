@@ -97,7 +97,7 @@ def fetch_bert_training_data(
     Fetches FHIR examples and prepares the label index for the BERT backend.
 
     Args:
-        fhir_url:      Base URL of the HAPI FHIR server.
+        fhir_url:      Base URL of the FHIR R4 server.
         partition_id:  Non-IID partition to consume (-1 = all).
         benchmark:     Benchmark filter for the label index.
         max_examples:  Limits the number of examples (0 = no limit).

@@ -63,7 +63,6 @@ import torch
 from sklearn.metrics import (
     accuracy_score,
     classification_report,
-    confusion_matrix,
     precision_recall_fscore_support,
 )
 

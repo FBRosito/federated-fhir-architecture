@@ -1,7 +1,7 @@
 """
 fhir_benchmark.py
 -----------------
-HAPI FHIR server latency and completeness benchmark.
+FHIR R4 server latency and completeness benchmark.
 
 Metrics:
   - POST latency (bundle upload): P50, P95, P99
@@ -90,7 +90,7 @@ def benchmark_post_bundles(
     Bundles are sent one at a time (no parallelism) to isolate latency.
 
     Args:
-        fhir_url:    Base URL of the HAPI FHIR server.
+        fhir_url:    Base URL of the FHIR R4 server.
         bundles_dir: Directory containing bundle_NNNNNN.json files.
         n_samples:   Number of bundles to send.
 
@@ -138,7 +138,7 @@ def benchmark_get_resources(
     Measures GET latency for paginated FHIR resource searches.
 
     Args:
-        fhir_url:        Base URL of the HAPI FHIR server.
+        fhir_url:        Base URL of the FHIR R4 server.
         resource_types:  List of resource types to search (default: Patient, Condition, DocumentReference).
         n_pages:         Number of pages to fetch per type.
 
@@ -188,12 +188,12 @@ def benchmark_completeness(
     n_samples: int = 50,
 ) -> FHIRBenchmarkResult:
     """
-    Checks completeness: fraction of Patient IDs from bundles that exist in HAPI FHIR.
+    Checks completeness: fraction of Patient IDs from bundles that exist in FHIR R4.
 
     A score < 1.0 indicates some bundles were not loaded successfully.
 
     Args:
-        fhir_url:    Base URL of the HAPI FHIR server.
+        fhir_url:    Base URL of the FHIR R4 server.
         bundles_dir: Directory containing bundle_NNNNNN.json files.
         n_samples:   Number of bundles to verify.
 
@@ -298,7 +298,7 @@ def main() -> None:
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
     )
-    parser = argparse.ArgumentParser(description="HAPI FHIR latency and completeness benchmark.")
+    parser = argparse.ArgumentParser(description="FHIR R4 latency and completeness benchmark.")
     parser.add_argument("--fhir-url", default=_DEFAULT_FHIR_URL)
     parser.add_argument("--bundles-dir", default="etl_worker/data/bundles")
     parser.add_argument("--n-samples", type=int, default=50)

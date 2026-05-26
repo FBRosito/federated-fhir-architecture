@@ -102,7 +102,7 @@ def run_attack_suite(
     Runs the DLG attack for each σ value and reports ROUGE-1 and BERTScore.
 
     Args:
-        fhir_url:        HAPI FHIR server URL to fetch clinical text samples.
+        fhir_url:        FHIR R4 server URL to fetch clinical text samples.
         base_model_name: HuggingFace model ID (must match FL training config).
         sigma_values:    List of DP noise multipliers to evaluate.
                          σ=0.0 → no DP (maximum leakage).
@@ -132,7 +132,7 @@ def run_attack_suite(
     if not examples:
         raise RuntimeError(
             f"No examples fetched from {fhir_url}. "
-            "Ensure HAPI FHIR is running and contains data."
+            "Ensure FHIR R4 is running and contains data."
         )
 
     original_texts = [ex.clinical_text for ex in examples[:n_samples]]
@@ -243,7 +243,7 @@ def main() -> None:
     parser.add_argument(
         "--fhir-url",
         default=_DEFAULT_FHIR_URL,
-        help="HAPI FHIR server base URL.",
+        help="FHIR R4 server base URL.",
     )
     parser.add_argument(
         "--base-model",

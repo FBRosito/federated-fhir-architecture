@@ -1,12 +1,12 @@
 """
 fhir_consumer.py
 ----------------
-Queries the HAPI FHIR server to retrieve Condition resources (ICD-10 labels)
+Queries the FHIR R4 server to retrieve Condition resources (ICD-10 labels)
 and DocumentReference resources (clinical texts), joining them into training
 examples ready for the federated fine-tuning pipeline.
 
 Environment variables:
-    FHIR_SERVER_URL   Base URL of the HAPI FHIR server (default: http://localhost:8080/fhir)
+    FHIR_SERVER_URL   Base URL of the FHIR R4 server (default: http://localhost:8080/fhir)
 
 Direct usage:
     uv run python ai_client/fhir_consumer.py [--fhir-url URL] [--patient-id ID]
@@ -172,7 +172,7 @@ def get_conditions(
     session: httpx.Client | None = None,
 ) -> dict[str, tuple[str, str, str, str, list[str]]]:
     """
-    Retrieves Condition resources from the HAPI FHIR server.
+    Retrieves Condition resources from the FHIR R4 server.
 
     Args:
         fhir_url:   Server base URL (e.g. "http://localhost:8080/fhir").
@@ -254,7 +254,7 @@ def get_document_references(
     session: httpx.Client | None = None,
 ) -> dict[str, tuple[str, str]]:
     """
-    Retrieves DocumentReference resources from the HAPI FHIR server.
+    Retrieves DocumentReference resources from the FHIR R4 server.
 
     Args:
         fhir_url:   Server base URL.
@@ -337,7 +337,7 @@ def fetch_training_examples(
     same patient and the clinical text meets the minimum length requirement.
 
     Args:
-        fhir_url:        HAPI FHIR server base URL.
+        fhir_url:        FHIR R4 server base URL.
         patient_id:      Filter by specific patient (optional).
         min_text_length: Minimum length (chars) of clinical text for inclusion.
 
@@ -355,7 +355,7 @@ def fetch_training_examples(
             conditions  = get_conditions(fhir_url, patient_id, session)
             doc_refs    = get_document_references(fhir_url, patient_id, session)
         except httpx.ConnectError:
-            msg = f"No connection to FHIR at {fhir_url}. Check that the hapi_fhir container is running."
+            msg = f"No connection to FHIR at {fhir_url}. Check that the fhir server is running."
             log.error(msg)
             stats.warnings.append(msg)
             return [], stats
@@ -432,7 +432,7 @@ def _cli() -> None:
     parser.add_argument(
         "--fhir-url",
         default=os.getenv("FHIR_SERVER_URL", "http://localhost:8080/fhir"),
-        help="HAPI FHIR server base URL.",
+        help="FHIR R4 server base URL.",
     )
     parser.add_argument("--patient-id", default=None, help="Filter by Patient.id.")
     parser.add_argument("--show-prompts", action="store_true", help="Display formatted prompts.")

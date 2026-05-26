@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 """
-generate_dataset.py — Gerador de dataset clínico sintético expandido.
+generate_dataset.py — Synthetic clinical dataset generator (smoke-test only).
 
-Para cada um dos 20 registros originais de clinical_evolutions.csv, gera
-4 variações sintéticas totalizando 100 exemplos (20 originais + 80 novos).
-As variações alteram paciente, sintomas, parâmetros vitais e profissional,
-mantendo o mesmo diagnóstico (raw_diagnosis) e partição (partition_id) para
-preservar a distribuição Non-IID por especialidade médica.
+For each of the 20 original records in clinical_evolutions.csv, generates
+4 synthetic variants totalling 100 examples (20 original + 80 new).
+Variants randomise patient demographics, symptoms, vital signs, and clinician
+while preserving the same diagnosis (raw_diagnosis) and partition (partition_id)
+to maintain the Non-IID specialty distribution across silos.
 
-Uso:
+NOTE: This synthetic dataset is used only for smoke tests. Paper experiments use MIMIC-IV.
+
+Usage:
     uv run python etl_worker/generate_dataset.py \
         --input  etl_worker/data/clinical_evolutions.csv \
         --output etl_worker/data/clinical_evolutions_100.csv
@@ -25,7 +27,7 @@ from pathlib import Path
 from typing import Any
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Dados auxiliares para geração de nomes e profissionais
+# Auxiliary data for name and clinician generation (synthetic patients)
 # ─────────────────────────────────────────────────────────────────────────────
 
 MALE_FIRST = [
@@ -91,9 +93,9 @@ PRACTITIONERS_BY_PARTITION = {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Variações de texto clínico por diagnóstico
-# Cada lista contém 4 strings-template para os 4 exemplos sintéticos.
-# {age}, {gender_adj}, {gender_pron} são substituídos em tempo de execução.
+# Clinical text variants per diagnosis.
+# Each list contains 4 template strings for the 4 synthetic examples.
+# {age}, {gender_adj}, {gender_pron} are substituted at runtime.
 # ─────────────────────────────────────────────────────────────────────────────
 
 CLINICAL_VARIANTS: dict[str, list[str]] = {
@@ -234,7 +236,7 @@ def random_name(gender: str, rng: random.Random) -> str:
 
 
 def random_birth_date(age: int, record_date_str: str, rng: random.Random) -> str:
-    """Gera data de nascimento compatível com a idade desejada."""
+    """Returns a birth date consistent with the given age."""
     record_year = int(record_date_str[:4])
     birth_year = record_year - age
     birth_month = rng.randint(1, 12)
@@ -243,9 +245,9 @@ def random_birth_date(age: int, record_date_str: str, rng: random.Random) -> str
 
 
 def vary_record_date(original: str, variant_index: int) -> str:
-    """Desloca a data de atendimento em dias para que cada variante seja única."""
+    """Shifts the encounter date so each variant has a unique timestamp."""
     base = date.fromisoformat(original[:10])
-    offset = (variant_index + 1) * 7  # semanas subsequentes
+    offset = (variant_index + 1) * 7  # subsequent weeks
     new_date = base + timedelta(days=offset)
     return f"{new_date.isoformat()}T{original[11:] if len(original) > 10 else '08:00:00Z'}"
 
@@ -264,7 +266,7 @@ def generate_variants(
     patient_counter: int,
     rng: random.Random,
 ) -> dict[str, Any]:
-    """Gera um único exemplo sintético a partir de um registro original."""
+    """Generates a single synthetic example from an original record."""
     diagnosis = original["raw_diagnosis"]
     partition_id = int(original["partition_id"])
 
