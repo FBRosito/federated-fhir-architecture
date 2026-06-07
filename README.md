@@ -562,15 +562,15 @@ federated-fhir-architecture/
 ## Citation
 
 ```bibtex
-@inproceedings{rosito2025herald,
+@inproceedings{anonymous2025herald,
   title     = {{HERALD}: Healthcare fEderated leaRning Architecture with {LoRA}
                and Differential-privacy},
-  author    = {Rosito, Fernando B.},
+  author    = {Anonymous},
   booktitle = {Proceedings of the IEEE International Conference on e-Health Networking,
                Application and Services (Healthcom)},
   year      = {2025},
   note      = {Under review},
-  url       = {https://github.com/fbrosito/federated-fhir-architecture},
+  url       = {[Anonymous for review]},
 }
 ```
 
