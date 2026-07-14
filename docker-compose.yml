@@ -29,6 +29,8 @@ x-ai-client-base: &ai-client-base
 
 x-silo-env: &silo-env
   FL_SERVER_ADDRESS: "localhost:9091"
+  FL_NETWORK_MODE: "${FL_NETWORK_MODE:-simulated}"
+  FL_CA_CERT_PATH: "${FL_CA_CERT_PATH:-}"
   FHIR_SERVER_URL: "http://localhost:8080/fhir"
   NVIDIA_VISIBLE_DEVICES: all
   NVIDIA_DRIVER_CAPABILITIES: compute,utility
@@ -94,6 +96,10 @@ services:
     restart: on-failure   # restart if it crashes before the first client connects
     environment:
       FL_SERVER_ADDRESS: "0.0.0.0:9091"
+      FL_NETWORK_MODE: "${FL_NETWORK_MODE:-simulated}"
+      FL_CA_CERT_PATH: "${FL_CA_CERT_PATH:-}"
+      FL_SERVER_CERT_PATH: "${FL_SERVER_CERT_PATH:-}"
+      FL_SERVER_KEY_PATH: "${FL_SERVER_KEY_PATH:-}"
       FL_MIN_CLIENTS: "${FL_MIN_CLIENTS:-5}"
       FL_NUM_ROUNDS: "${FL_NUM_ROUNDS:-10}"
       FL_ROUND_TIMEOUT: "32400"   # 9h — parallel silos ~30 min/round; sequential ~1h/round

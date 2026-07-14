@@ -20,7 +20,9 @@ Train/eval split:
 
 Environment variables:
     FHIR_SERVER_URL       Base URL of the FHIR R4 server (default: http://localhost:8080/fhir)
-    FL_SERVER_ADDRESS     Flower server address (default: fl_server:9091)
+    FL_SERVER_ADDRESS     Flower server address (default: localhost:9091)
+    FL_NETWORK_MODE       "simulated" (loopback, insecure gRPC) | anything else = "real" (TLS)
+    FL_CA_CERT_PATH       CA cert to verify the FL server (real mode only)
     ETL_PARTITION_ID      Non-IID partition to consume (-1 = all, default: -1)
     MODEL_NAME            HuggingFace model ID for the base model
     MAX_SEQ_LEN           Maximum tokenization length
@@ -68,7 +70,10 @@ log = logging.getLogger(__name__)
 # ── Environment defaults ──────────────────────────────────────────────────────
 
 _FHIR_URL     = os.getenv("FHIR_SERVER_URL",   "http://localhost:8080/fhir")
-_FL_ADDRESS   = os.getenv("FL_SERVER_ADDRESS",  "fl_server:9091")
+_FL_ADDRESS   = os.getenv("FL_SERVER_ADDRESS",  "localhost:9091")
+_NETWORK_MODE = os.getenv("FL_NETWORK_MODE", "real").strip().lower()
+_IS_SIMULATED = _NETWORK_MODE == "simulated"
+_CA_CERT_PATH = os.getenv("FL_CA_CERT_PATH", "")
 _PARTITION_ID = int(os.getenv("ETL_PARTITION_ID", "-1"))
 _MODEL_NAME   = os.getenv("MODEL_NAME",          "meta-llama/Llama-3.1-8B")
 _MAX_SEQ_LEN  = int(os.getenv("MAX_SEQ_LEN",     "512"))
@@ -1123,12 +1128,27 @@ def main() -> None:
         max_length   = _MAX_SEQ_LEN,
     )
 
-    start_client(
-        server_address         = _FL_ADDRESS,
-        client                 = client.to_client(),
-        grpc_max_message_length = 512 * 1024 * 1024,   # 512 MB — LLM weights
-        insecure               = True,                  # TLS should be enabled in production
-    )
+    log.info("FL network mode: %s", "SIMULATED (insecure loopback)" if _IS_SIMULATED else "REAL (TLS)")
+
+    if _IS_SIMULATED:
+        start_client(
+            server_address         = _FL_ADDRESS,
+            client                 = client.to_client(),
+            grpc_max_message_length = 512 * 1024 * 1024,   # 512 MB — LLM weights
+            insecure               = True,
+        )
+    else:
+        root_certificates = None
+        if _CA_CERT_PATH:
+            with open(_CA_CERT_PATH, "rb") as f:
+                root_certificates = f.read()
+        start_client(
+            server_address         = _FL_ADDRESS,
+            client                 = client.to_client(),
+            grpc_max_message_length = 512 * 1024 * 1024,   # 512 MB — LLM weights
+            insecure               = False,
+            root_certificates      = root_certificates,
+        )
 
 
 if __name__ == "__main__":

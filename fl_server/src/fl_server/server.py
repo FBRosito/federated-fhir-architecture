@@ -31,6 +31,10 @@ Threat model mitigated:
 
 Environment variables:
     FL_SERVER_ADDRESS      gRPC listen address (default: [::]:9091)
+    FL_NETWORK_MODE        "simulated" (insecure gRPC) | anything else = "real" (TLS)
+    FL_CA_CERT_PATH        CA cert — 1st element of the TLS certificate chain (real mode)
+    FL_SERVER_CERT_PATH    Server certificate (real mode)
+    FL_SERVER_KEY_PATH     Server private key (real mode)
     FL_NUM_ROUNDS          Federated training rounds (default: 5)
     FL_MIN_CLIENTS         Minimum clients to start each round (default: 2)
     FL_STRATEGY            "fedprox" | "fedavg" (default: fedprox)
@@ -76,6 +80,11 @@ def _env_str(key: str, default: str) -> str:
 
 
 SERVER_ADDRESS      = _env_str("FL_SERVER_ADDRESS", "[::]:9091")
+NETWORK_MODE        = _env_str("FL_NETWORK_MODE", "real").strip().lower()
+IS_SIMULATED        = NETWORK_MODE == "simulated"
+CA_CERT_PATH        = _env_str("FL_CA_CERT_PATH", "")
+SERVER_CERT_PATH    = _env_str("FL_SERVER_CERT_PATH", "")
+SERVER_KEY_PATH     = _env_str("FL_SERVER_KEY_PATH", "")
 ROUND_TIMEOUT       = _env_float("FL_ROUND_TIMEOUT", 3600.0)   # 1h — waits for clients
 NUM_ROUNDS          = _env_int("FL_NUM_ROUNDS", 5)
 MIN_CLIENTS         = _env_int("FL_MIN_CLIENTS", 2)
@@ -474,6 +483,20 @@ def server_fn(context) -> ServerAppComponents:
 app = ServerApp(server_fn=server_fn)
 
 
+# ── TLS certificates (FL_NETWORK_MODE=real) ──────────────────────────────────
+
+def _load_server_certificates() -> tuple[bytes, bytes, bytes] | None:
+    if not (CA_CERT_PATH and SERVER_CERT_PATH and SERVER_KEY_PATH):
+        return None
+    with open(CA_CERT_PATH, "rb") as f:
+        ca_cert = f.read()
+    with open(SERVER_CERT_PATH, "rb") as f:
+        server_cert = f.read()
+    with open(SERVER_KEY_PATH, "rb") as f:
+        server_key = f.read()
+    return ca_cert, server_cert, server_key
+
+
 # ── Legacy entry point (start_server) ────────────────────────────────────────
 
 def main() -> None:
@@ -498,12 +521,23 @@ def main() -> None:
 
     strategy = build_strategy()
 
-    history = start_server(
-        server_address         = SERVER_ADDRESS,
-        config                 = ServerConfig(num_rounds=NUM_ROUNDS, round_timeout=ROUND_TIMEOUT),
-        strategy               = strategy,
-        grpc_max_message_length = 512 * 1024 * 1024,  # 512 MB — LLM weights are large
-    )
+    log.info("FL network mode: %s", "SIMULATED (insecure loopback)" if IS_SIMULATED else "REAL (TLS)")
+
+    if IS_SIMULATED:
+        history = start_server(
+            server_address         = SERVER_ADDRESS,
+            config                 = ServerConfig(num_rounds=NUM_ROUNDS, round_timeout=ROUND_TIMEOUT),
+            strategy               = strategy,
+            grpc_max_message_length = 512 * 1024 * 1024,  # 512 MB — LLM weights are large
+        )
+    else:
+        history = start_server(
+            server_address         = SERVER_ADDRESS,
+            config                 = ServerConfig(num_rounds=NUM_ROUNDS, round_timeout=ROUND_TIMEOUT),
+            strategy               = strategy,
+            grpc_max_message_length = 512 * 1024 * 1024,  # 512 MB — LLM weights are large
+            certificates            = _load_server_certificates(),
+        )
 
     _print_training_summary(history, NUM_ROUNDS)
 

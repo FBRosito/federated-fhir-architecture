@@ -113,6 +113,10 @@ start_fl_server() {
     local min_clients="$1" noise="$2" rounds="$3" strategy="${4:-fedprox}" mu="${5:-0.01}" lr="${6:-5e-5}"
     export FL_MIN_CLIENTS="$min_clients" FL_NUM_ROUNDS="$rounds" FL_NOISE_MULTIPLIER="$noise"
     export FL_STRATEGY="$strategy" FL_LEARNING_RATE="$lr" FL_NUM_EPOCHS=1 FL_PROXIMAL_MU="$mu"
+    export FL_NETWORK_MODE="${FL_NETWORK_MODE:-simulated}"
+    export FL_CA_CERT_PATH="${FL_CA_CERT_PATH:-}"
+    export FL_SERVER_CERT_PATH="${FL_SERVER_CERT_PATH:-}"
+    export FL_SERVER_KEY_PATH="${FL_SERVER_KEY_PATH:-}"
     pkill -f "fl-server" 2>/dev/null || true
     sleep 2
     : > "$LOGS/fl_server_current.log"
@@ -291,6 +295,8 @@ _run_silo() {
     local part="$1" tag="$2"
     ETL_PARTITION_ID="$part" \
     FL_SERVER_ADDRESS="localhost:9091" \
+    FL_NETWORK_MODE="${FL_NETWORK_MODE:-simulated}" \
+    FL_CA_CERT_PATH="${FL_CA_CERT_PATH:-}" \
     FHIR_SERVER_URL="http://localhost:8080/fhir" \
     NVIDIA_VISIBLE_DEVICES=all \
     GPU_LOCK_PATH="$GPU_LOCK_PATH" \
@@ -399,6 +405,7 @@ run_calibration() {
     MAX_SEQ_LEN="$calib_seq_len" FL_BATCH_SIZE=1 FL_GRADIENT_ACCUM_STEPS=1 \
     FL_CALIB_OUTPUT="/tmp/grad_norm_${backend}.json" \
     ETL_PARTITION_ID=0 FL_SERVER_ADDRESS=localhost:9091 \
+    FL_NETWORK_MODE="${FL_NETWORK_MODE:-simulated}" FL_CA_CERT_PATH="${FL_CA_CERT_PATH:-}" \
     FHIR_SERVER_URL=http://localhost:8080/fhir \
     NVIDIA_VISIBLE_DEVICES=all GPU_LOCK_PATH="$GPU_LOCK_PATH" \
     FL_LORA_COMPRESS=false MODEL_BASE_PRECISION="${MODEL_BASE_PRECISION:-nf4}" \

@@ -153,6 +153,10 @@ start_fl_server() {
     export FL_LEARNING_RATE=5e-5
     export FL_NUM_EPOCHS=1
     export FL_PROXIMAL_MU="$mu"
+    export FL_NETWORK_MODE="${FL_NETWORK_MODE:-simulated}"
+    export FL_CA_CERT_PATH="${FL_CA_CERT_PATH:-}"
+    export FL_SERVER_CERT_PATH="${FL_SERVER_CERT_PATH:-}"
+    export FL_SERVER_KEY_PATH="${FL_SERVER_KEY_PATH:-}"
     # Use docker rm -f directly to avoid docker compose rm deadlock on containers
     # stuck in Created/Dead/Removing states (compose rm hangs waiting for stop).
     docker stop fl_server 2>/dev/null || true
@@ -339,6 +343,8 @@ run_fl() {
     export FL_TARGET_DELTA=1e-5
     export MODEL_BACKEND="$backend"
     export FL_SEED="$seed"
+    export FL_NETWORK_MODE="${FL_NETWORK_MODE:-simulated}"
+    export FL_CA_CERT_PATH="${FL_CA_CERT_PATH:-}"
     # C₀ from empirical calibration — backend-specific
     if [ "$backend" = "bert" ]; then
         export FL_MAX_GRAD_NORM="${FL_MAX_GRAD_NORM_BERT:-1.0}"
