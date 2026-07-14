@@ -1,0 +1,9 @@
+clipping_strategy: baseline
+sigma_values: [1.0, 2.0]
+num_rounds: 20
+num_seeds: 10
+num_silos: 5
+model: pubmedbert
+dataset: mimic4
+dirichlet_alpha: 0.5
+global_c0: 1.0
