@@ -19,12 +19,21 @@ Sensitivity accounting: per-layer thresholds returned by
 PerLayerClipper.compute_thresholds() are rescaled so that the vector
 sensitivity of the whole gradient, sqrt(sum(C_l**2) for C_l in thresholds),
 equals train_cfg.max_grad_norm (the same C0 the baseline pipeline uses).
-This is what Opacus's own native clipping="per_layer" mode does with equal,
-non-adaptive per-layer shares of a shared budget; here the shares are
-adaptive (percentile-calibrated) instead of equal, but the total budget is
-preserved identically. dp_accountant.step() below is called with the same
-(noise_multiplier, sample_rate) as the baseline and never receives per-layer
-information, so its epsilon output is unaffected by this substitution.
+This bounds the CLIP correctly, but dp_accountant.step() is still called
+with a single scalar noise_multiplier while the actual noise std added per
+group is normalized_threshold_l * noise_multiplier — i.e. non-isotropic
+across the parameter vector. RDP for a Gaussian mechanism is not a function
+of the global L2 sensitivity alone when the per-coordinate noise variance
+is non-uniform: an adversary whose worst-case perturbation is spread across
+every low-threshold group (each saturating its own C_l simultaneously)
+produces a larger Rényi divergence than the scalar accountant reports,
+because the noise-to-sensitivity ratio the accountant assumes (std/C0) does
+not hold group-by-group when std is itself scaled by C_l. Confirmed
+empirically: dp_accountant.step()'s reported epsilon is bit-identical
+between "baseline" and "per_layer" runs at the same sigma, despite the
+per_layer path adding noise 18x-427x smaller on the encoder groups — see
+the audit that motivated this fix. Do not treat epsilon_cumulative from the
+per_layer path as an accurate privacy guarantee until this is corrected.
 """
 
 from __future__ import annotations
@@ -65,7 +74,7 @@ def _normalized_thresholds(clipper: PerLayerClipper, max_grad_norm: float) -> di
 
 
 def _clip_and_noise_per_layer(
-    clipper: PerLayerClipper,
+    groups: dict[str, list[torch.nn.Parameter]],
     normalized_thresholds: dict[str, float],
     dp_active: bool,
     noise_multiplier: float,
@@ -74,9 +83,14 @@ def _clip_and_noise_per_layer(
     then — if DP is active — adds Gaussian noise to each group's gradients
     with std = normalized_threshold * noise_multiplier. Returns the combined
     total norm (post-clip), mirroring the scalar `total_norm` the baseline
-    pipeline uses for its finite-value guard."""
+    pipeline uses for its finite-value guard.
+
+    `groups` must be the dict returned by this round's clipper.update_history()
+    call (current round's live parameters) — never clipper.groups, which no
+    longer exists precisely because a cached copy goes stale after one round
+    (see clipping.py's PerLayerClipper docstring)."""
     total_norm_sq = 0.0
-    for name, params in clipper.groups.items():
+    for name, params in groups.items():
         if not params:
             continue
         group_norm = torch.nn.utils.clip_grad_norm_(params, normalized_thresholds[name])
@@ -85,7 +99,7 @@ def _clip_and_noise_per_layer(
 
     if dp_active and math.isfinite(total_norm):
         with torch.no_grad():
-            for name, params in clipper.groups.items():
+            for name, params in groups.items():
                 std_l = normalized_thresholds[name] * noise_multiplier
                 for p in params:
                     if p.grad is not None:
@@ -227,10 +241,10 @@ def adaptive_train_bert_one_round(
 
             if accum_count % effective_accum_steps == 0:
                 scaler.unscale_(optimizer)
-                clipper.update_history(server_round)
+                groups = clipper.update_history(server_round, model.named_parameters())
                 normalized_thresholds = _normalized_thresholds(clipper, train_cfg.max_grad_norm)
                 total_norm = _clip_and_noise_per_layer(
-                    clipper, normalized_thresholds, dp_active, train_cfg.noise_multiplier,
+                    groups, normalized_thresholds, dp_active, train_cfg.noise_multiplier,
                 )
                 if dp_active and math.isfinite(total_norm) and dp_accountant is not None:
                     dp_accountant.step(
@@ -254,10 +268,10 @@ def adaptive_train_bert_one_round(
 
         if accum_count > 0:
             scaler.unscale_(optimizer)
-            clipper.update_history(server_round)
+            groups = clipper.update_history(server_round, model.named_parameters())
             normalized_thresholds = _normalized_thresholds(clipper, train_cfg.max_grad_norm)
             total_norm = _clip_and_noise_per_layer(
-                clipper, normalized_thresholds, dp_active, train_cfg.noise_multiplier,
+                groups, normalized_thresholds, dp_active, train_cfg.noise_multiplier,
             )
             if dp_active and math.isfinite(total_norm) and dp_accountant is not None:
                 dp_accountant.step(
@@ -450,10 +464,10 @@ def adaptive_train_one_round(
                     if math.isfinite(float(raw_norm)) and float(raw_norm) > 0:
                         _calib_norms.append(float(raw_norm))
 
-                clipper.update_history(server_round)
+                groups = clipper.update_history(server_round, model.named_parameters())
                 normalized_thresholds = _normalized_thresholds(clipper, train_cfg.max_grad_norm)
                 total_norm = _clip_and_noise_per_layer(
-                    clipper, normalized_thresholds, dp_active, train_cfg.noise_multiplier,
+                    groups, normalized_thresholds, dp_active, train_cfg.noise_multiplier,
                 )
                 if dp_active and math.isfinite(total_norm) and dp_accountant is not None:
                     dp_accountant.step(
@@ -483,10 +497,10 @@ def adaptive_train_one_round(
 
         if accum_count > 0:
             scaler.unscale_(optimizer)
-            clipper.update_history(server_round)
+            groups = clipper.update_history(server_round, model.named_parameters())
             normalized_thresholds = _normalized_thresholds(clipper, train_cfg.max_grad_norm)
             total_norm = _clip_and_noise_per_layer(
-                clipper, normalized_thresholds, dp_active, train_cfg.noise_multiplier,
+                groups, normalized_thresholds, dp_active, train_cfg.noise_multiplier,
             )
             if dp_active and math.isfinite(total_norm) and dp_accountant is not None:
                 dp_accountant.step(

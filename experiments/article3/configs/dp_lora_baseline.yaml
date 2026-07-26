@@ -1,0 +1,14 @@
+# Artigo 3 — DP-LoRA baseline (standard LoRA, ambas matrizes treináveis)
+lora_mode: standard
+clipping_strategy: global
+global_c0: 1.0
+sigma: 1.0
+dp_subsample_rate: 0.01
+num_rounds: 100
+num_seeds: 10
+num_silos: 5
+model: pubmedbert
+dataset: mimic4
+dirichlet_alpha: 0.5
+target_epsilon: 2.5
+# Expected: epsilon ~2.50 at R=100 with q=0.01, sigma=1.0

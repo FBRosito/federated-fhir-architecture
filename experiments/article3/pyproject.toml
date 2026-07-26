@@ -1,0 +1,34 @@
+[project]
+name = "article3"
+version = "0.1.0"
+description = "Article 3 experiment: DP-LoRA / FFA-LoRA / Dual-LoRA (HERALD-PFL) for PubMedBERT federated ICD-10 coding"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "ai-client",
+    "fl-server",
+    "evaluation",
+    "opacus>=1.5.4,<2.0.0",
+    "pyyaml>=6.0.3,<7.0.0",
+    "scipy>=1.17.0,<2.0.0",
+    "matplotlib>=3.10.0,<4.0.0",
+    "pandas>=2.2.0,<4.0.0",
+]
+
+[project.scripts]
+dual-lora-client = "article3.client:main"
+dual-lora-server = "article3.server:main"
+
+[tool.uv.sources]
+ai-client  = { path = "../../ai_client",  editable = true }
+fl-server  = { path = "../../fl_server",  editable = true }
+evaluation = { path = "../../evaluation", editable = true }
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[build-system]
+requires = ["uv_build>=0.11.2,<0.12.0"]
+build-backend = "uv_build"

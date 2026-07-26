@@ -1,0 +1,20 @@
+# Artigo 3 — Dual LoRA / HERALD-PFL (adaptador global r=8 + local r=4)
+lora_mode: dual
+clipping_strategy: global
+global_c0: 1.0
+local_rank: 4
+local_alpha: 8
+fusion_weight_global: 0.5
+fusion_weight_local: 0.5
+sigma: 1.0
+dp_subsample_rate: 0.01
+num_rounds: 100
+num_seeds: 10
+num_silos: 5
+model: pubmedbert
+dataset: mimic4
+dirichlet_alpha: 0.5
+target_epsilon: 2.5
+# Reference: FDLoRA (Qi et al., 2024), adapted for FHIR-native FL with DP.
+# Local adapter is persisted per-silo across rounds (logs/{tag}/{silo}/local_adapter.pt) —
+# never transmitted to the server, never DP-noised.

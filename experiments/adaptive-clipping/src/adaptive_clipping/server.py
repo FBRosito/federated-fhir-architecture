@@ -68,7 +68,16 @@ def _json_field(metrics: dict, key: str) -> dict:
 
 
 def _buffer_fit_metrics(metrics: list[tuple[int, dict]]) -> dict:
-    aggregated = aggregate_fit_metrics(metrics)
+    # aggregate_fit_metrics (fl_server) does a plain float(value) weighted
+    # average — it can't handle the string/JSON fields clients attach here
+    # (clipping_strategy, per_layer_thresholds, per_layer_norms). Those are
+    # read back from the raw per-client dicts via _fit_buffer below, not
+    # from this aggregate, so it's safe to drop non-numeric values here.
+    numeric_metrics = [
+        (n, {k: v for k, v in m.items() if isinstance(v, (int, float))})
+        for n, m in metrics
+    ]
+    aggregated = aggregate_fit_metrics(numeric_metrics)
     for _n_examples, client_metrics in metrics:
         server_round = int(client_metrics.get("server_round", 0))
         silo_id = int(client_metrics.get("partition_id", -1))

@@ -76,8 +76,16 @@ services:
   hapi_fhir:
     image: hapiproject/hapi:latest
     container_name: hapi_fhir
+    restart: unless-stopped
+    volumes:
+      - hapi_fhir_data:/data/hapi
     environment:
       hapi.fhir.fhir_version: R4
+      spring.datasource.url: jdbc:h2:file:/data/hapi/h2;DB_CLOSE_ON_EXIT=FALSE
+      spring.datasource.username: sa
+      spring.datasource.password: ""
+      spring.datasource.driverClassName: org.h2.Driver
+      spring.jpa.properties.hibernate.dialect: ca.uhn.fhir.jpa.model.dialect.HapiFhirH2Dialect
     # hapiproject/hapi is distroless (no shell, no wget, no curl).
     # Boot wait is handled by retry logic in etl_pipeline.post_bundle.
     network_mode: host
@@ -185,3 +193,4 @@ services:
 volumes:
   model_cache:
   gpu_sync:     # lock file for serialising GPU access across silos
+  hapi_fhir_data:     # persists the H2 DB file across container restarts (was in-memory)

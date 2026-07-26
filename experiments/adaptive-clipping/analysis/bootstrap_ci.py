@@ -31,6 +31,10 @@ def load_final_round_records(logs_root: Path, strategy: str, sigma: float) -> di
     """Returns {seed: [round_020 record per silo]} for one (strategy, sigma) config."""
     records_by_seed: dict[int, list[dict]] = {}
     for run_dir in sorted(logs_root.glob(f"{strategy}_sigma{sigma}_seed*")):
+        # The glob also matches loose *_server.log / *_silo{N}.log files that
+        # sit flat in logs_root next to the run directories — skip those.
+        if not run_dir.is_dir():
+            continue
         seed = int(run_dir.name.rsplit("seed", 1)[1])
         records = []
         for silo_id in range(NUM_SILOS):

@@ -1,0 +1,23 @@
+# C0 sweep — point 1/4: C0=1.0 (uncalibrated / original HERALD baseline)
+#
+# Sweep goal: show that no single flat/global C0 resolves the ~20-500x scale
+# gap between encoder gradients (observed norms 0.002-0.054) and the
+# classifier head (observed norm ~0.97). sigma is pinned to 1.0 across all
+# 4 sweep points so epsilon is identical everywhere (verified via
+# RDPAccountant: 19.0163 at every C0 in this sweep) — the only thing that
+# changes point to point is the absolute noise std (C0 * sigma) and how much
+# of the true gradient signal each clip threshold preserves.
+#
+# This point reproduces the original HERALD regime: noise std=1.0 dwarfs
+# every real gradient in the model (including the head's own ~0.97 norm),
+# so this is the reference "does nothing works" anchor for the sweep curve.
+clipping_strategy: baseline_flat
+sweep_c0: 1.0
+sigma: 1.0
+num_rounds: 20
+num_seeds: 5
+num_silos: 5
+model: pubmedbert
+dataset: mimic4
+dirichlet_alpha: 0.5
+global_c0: 1.0

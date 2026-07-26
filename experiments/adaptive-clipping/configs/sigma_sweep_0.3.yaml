@@ -1,0 +1,11 @@
+clipping_strategy: baseline
+global_c0: 1.0
+sigma: 0.3
+num_rounds: 20
+num_seeds: 5
+num_silos: 5
+model: pubmedbert
+dataset: mimic4
+dirichlet_alpha: 0.5
+# SNR analysis: with sigma=0.3, effective SNR for classifier head = 1/sigma = 3.3333
+# Expected epsilon: 349.9043 (RDPAccountant, q=29/298, steps=580, delta=1e-5)

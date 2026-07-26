@@ -1,0 +1,16 @@
+\begin{tabular}{llccccc}
+\toprule
+Configuration & $\sigma$ & Micro-F1 (mean$\pm$std) & $\varepsilon$ (mean) & 95\% CI & $\Delta$ vs.\ baseline & $p$ (Bonferroni) \\
+\midrule
+Baseline (global clip) & 1.0 & 0.1202$\pm$0.0229 & 55.70 & [0.1079, 0.1344] & — & — \\
+Per-layer clip & 1.0 & 0.1249$\pm$0.0193 & 55.70 & [0.1139, 0.1366] & +0.0047 & 0.2617 \\
+\midrule
+Baseline (global clip) & 2.0 & 0.1090$\pm$0.0138 & 17.36 & [0.1017, 0.1177] & — & — \\
+Per-layer clip & 2.0 & 0.1099$\pm$0.0151 & 17.36 & [0.1020, 0.1195] & +0.0010 & 0.7188 \\
+\midrule
+Centralized$^\dagger$ & — & 0.409 & — & — & — & — \\
+FL, no DP$^\dagger$ & — & 0.308 & — & — & — & — \\
+\bottomrule
+\end{tabular}
+\\[2pt]
+{\footnotesize $^\dagger$Centralized and FL-no-DP figures are taken from the original HERALD paper/experiment logs, not re-run in this matrix.}

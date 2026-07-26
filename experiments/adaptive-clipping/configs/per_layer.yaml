@@ -7,7 +7,7 @@ model: pubmedbert
 dataset: mimic4
 dirichlet_alpha: 0.5
 global_c0: 1.0
-warmup_rounds: 3
+warmup_rounds: 5   # increased from 3 for stable percentile estimation at low norms
 percentile: 75.0
-min_clip: 0.1
-max_clip: 10.0
+min_clip: 0.001    # calibrated to observed encoder gradient norm range (0.003-0.054)
+max_clip: 2.0      # set to 2.0 to cover classifier head (norm ~1.0) with margin

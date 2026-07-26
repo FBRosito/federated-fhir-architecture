@@ -1,0 +1,69 @@
+{
+  "tag": "centralizado_bert_seed43",
+  "completed_at": "2026-05-23T12:08:34.172292Z",
+  "config": {
+    "backend": "bert",
+    "strategy": "centralised",
+    "noise_multiplier": 0.0,
+    "n_silos": 1,
+    "seed": 43,
+    "num_rounds": 10,
+    "proximal_mu": 0.0
+  },
+  "per_round_eval": [
+    {
+      "epoch": 1,
+      "train_loss": 0.222
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.1109
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.1006
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.0948
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.0913
+    },
+    {
+      "epoch": 6,
+      "train_loss": 0.0888
+    },
+    {
+      "epoch": 7,
+      "train_loss": 0.0873
+    },
+    {
+      "epoch": 8,
+      "train_loss": 0.086
+    },
+    {
+      "epoch": 9,
+      "train_loss": 0.0852
+    },
+    {
+      "epoch": 10,
+      "train_loss": 0.0847
+    }
+  ],
+  "final_metrics": {
+    "eval_loss": 0.0847,
+    "micro_f1": 0.4125,
+    "macro_f1": 0.1781,
+    "auc_roc_micro": 0.9156,
+    "auc_roc_macro": 0.8605,
+    "P@8": 0.1397,
+    "R@8": 0.5412,
+    "F1@8": 0.2221,
+    "P@15": 0.0881,
+    "R@15": 0.6205,
+    "F1@15": 0.1543
+  },
+  "n_rounds_completed": 10
+}

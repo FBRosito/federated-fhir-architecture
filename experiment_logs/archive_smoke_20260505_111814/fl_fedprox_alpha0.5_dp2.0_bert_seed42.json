@@ -1,0 +1,67 @@
+{
+  "tag": "fl_fedprox_alpha0.5_dp2.0_bert_seed42",
+  "completed_at": "2026-05-04T15:23:34.456388Z",
+  "config": {
+    "backend": "bert",
+    "strategy": "fedprox",
+    "noise_multiplier": 2.0,
+    "n_silos": 5,
+    "seed": 42,
+    "num_rounds": 2,
+    "proximal_mu": 0.01
+  },
+  "per_round_eval": [
+    {
+      "partition_id": 2.2,
+      "R@15": 0.4617,
+      "macro_f1": 0.0533,
+      "n_labels": 50.0,
+      "F1@15": 0.1492,
+      "R@8": 0.3475,
+      "micro_f1": 0.13,
+      "F1@8": 0.1803,
+      "auc_roc_macro": 0.5343,
+      "P@8": 0.125,
+      "P@15": 0.09,
+      "server_round": 1.0,
+      "eval_loss": 0.7002,
+      "n_samples": 4.5,
+      "auc_roc_micro": 0.5634
+    },
+    {
+      "partition_id": 2.2,
+      "R@15": 0.4617,
+      "macro_f1": 0.0517,
+      "n_labels": 50.0,
+      "F1@15": 0.1492,
+      "R@8": 0.3475,
+      "micro_f1": 0.1274,
+      "F1@8": 0.1803,
+      "auc_roc_macro": 0.544,
+      "P@15": 0.09,
+      "P@8": 0.125,
+      "server_round": 2.0,
+      "eval_loss": 0.6981,
+      "n_samples": 4.5,
+      "auc_roc_micro": 0.5645
+    }
+  ],
+  "final_metrics": {
+    "partition_id": 2.2,
+    "R@15": 0.4617,
+    "macro_f1": 0.0517,
+    "n_labels": 50.0,
+    "F1@15": 0.1492,
+    "R@8": 0.3475,
+    "micro_f1": 0.1274,
+    "F1@8": 0.1803,
+    "auc_roc_macro": 0.544,
+    "P@15": 0.09,
+    "P@8": 0.125,
+    "server_round": 2.0,
+    "eval_loss": 0.6981,
+    "n_samples": 4.5,
+    "auc_roc_micro": 0.5645
+  },
+  "n_rounds_completed": 2
+}

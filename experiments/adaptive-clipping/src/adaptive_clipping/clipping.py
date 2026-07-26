@@ -5,13 +5,14 @@ Tracks per-attention-layer gradient-norm history and computes adaptive
 clipping thresholds. Contains NO Opacus/PrivacyEngine integration and
 performs no clipping itself — training.py owns clip+noise application.
 This separation keeps clipping.py importable and unit-testable without
-CUDA/model weights (only torch, numpy, re, dataclasses).
+CUDA/model weights (only torch, numpy, re, collections).
 """
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from collections import defaultdict
+from collections.abc import Iterable
 
 import numpy as np
 import torch
@@ -25,21 +26,23 @@ _LAYER_PATTERNS: list[tuple[re.Pattern, str]] = [
 ]
 
 
-@dataclass
-class _LayerNormHistory:
-    values: list[float] = field(default_factory=list)
-
-
 class PerLayerClipper:
     """
     Tracks per-layer gradient norms across FL rounds and computes
     adaptive clipping thresholds calibrated to each LoRA layer's
     historical gradient distribution.
+
+    Holds NO reference to nn.Parameter objects between calls. The FL client
+    reloads a brand-new model object on every fit() (see ai_client.fl_client
+    _load_model/_unload_model) — any nn.Parameter cached here across rounds
+    would belong to a model already deleted, so its .grad is permanently
+    None from round 2 onward and the history would silently freeze at
+    round 1's values. update_history() therefore takes the current round's
+    live named_parameters explicitly, every call.
     """
 
     def __init__(
         self,
-        named_parameters: list[tuple[str, torch.nn.Parameter]],
         warmup_rounds: int = 3,
         percentile: float = 75.0,
         min_clip: float = 0.1,
@@ -52,17 +55,12 @@ class PerLayerClipper:
         self.max_clip = max_clip
         self.global_c0 = global_c0
 
-        self._groups: dict[str, list[torch.nn.Parameter]] = self.group_by_attention_layer(
-            named_parameters
-        )
-        self._history: dict[str, _LayerNormHistory] = {
-            name: _LayerNormHistory() for name in self._groups
-        }
+        self._history: dict[str, list[float]] = defaultdict(list)
         self._current_round = 0
 
     @staticmethod
     def group_by_attention_layer(
-        named_parameters: list[tuple[str, torch.nn.Parameter]],
+        named_parameters: Iterable[tuple[str, torch.nn.Parameter]],
     ) -> dict[str, list[torch.nn.Parameter]]:
         """
         Groups LoRA parameters by transformer attention layer index.
@@ -74,6 +72,8 @@ class PerLayerClipper:
         patterns like 'encoder.layer.N', 'layers.N', 'h.N'.
         Falls back to 'other' for parameters not matching any pattern
         (e.g., classifier head, label attention).
+
+        Stateless — safe to call with a fresh named_parameters() every round.
         """
         groups: dict[str, list[torch.nn.Parameter]] = {}
         for name, param in named_parameters:
@@ -86,19 +86,29 @@ class PerLayerClipper:
             groups.setdefault(group_key, []).append(param)
         return groups
 
-    @property
-    def groups(self) -> dict[str, list[torch.nn.Parameter]]:
-        return self._groups
-
-    def update_history(self, round_idx: int) -> None:
-        """Called after backward(), before any clipping, once per optimizer step."""
+    def update_history(
+        self,
+        round_idx: int,
+        named_parameters: Iterable[tuple[str, torch.nn.Parameter]],
+    ) -> dict[str, list[torch.nn.Parameter]]:
+        """Called after backward(), before any clipping, once per optimizer
+        step. named_parameters must be the CURRENT round's live model
+        parameters — never a reference captured at construction time (see
+        class docstring). Grouping is recomputed fresh from these live
+        parameters every call and returned, so the clip+noise step can reuse
+        the same live groups without touching any state cached on self.
+        """
         self._current_round = round_idx
-        for name, params in self._groups.items():
+        groups = self.group_by_attention_layer(
+            [(n, p) for n, p in named_parameters if p.requires_grad]
+        )
+        for name, params in groups.items():
             grads = [p.grad.detach() for p in params if p.grad is not None]
             if not grads:
                 continue
             group_norm = torch.norm(torch.stack([g.norm(2) for g in grads]), 2).item()
-            self._history[name].values.append(float(group_norm))
+            self._history[name].append(float(group_norm))
+        return groups
 
     def compute_thresholds(self) -> dict[str, float]:
         """
@@ -108,14 +118,14 @@ class PerLayerClipper:
         clamped to [min_clip, max_clip].
         """
         if self._current_round < self.warmup_rounds:
-            return {name: self.global_c0 for name in self._groups}
+            return {name: self.global_c0 for name in self._history}
 
         thresholds: dict[str, float] = {}
-        for name, hist in self._history.items():
-            if not hist.values:
+        for name, values in self._history.items():
+            if not values:
                 thresholds[name] = self.global_c0
                 continue
-            p = float(np.percentile(hist.values, self.percentile))
+            p = float(np.percentile(values, self.percentile))
             thresholds[name] = float(np.clip(p, self.min_clip, self.max_clip))
         return thresholds
 
@@ -126,14 +136,14 @@ class PerLayerClipper:
         Keys: layer_name -> {mean, std, min, max, history: list[float]}
         """
         summary: dict[str, dict] = {}
-        for name, hist in self._history.items():
-            if hist.values:
+        for name, values in self._history.items():
+            if values:
                 summary[name] = {
-                    "mean": float(np.mean(hist.values)),
-                    "std": float(np.std(hist.values)),
-                    "min": float(np.min(hist.values)),
-                    "max": float(np.max(hist.values)),
-                    "history": list(hist.values),
+                    "mean": float(np.mean(values)),
+                    "std": float(np.std(values)),
+                    "min": float(np.min(values)),
+                    "max": float(np.max(values)),
+                    "history": list(values),
                 }
             else:
                 summary[name] = {"mean": 0.0, "std": 0.0, "min": 0.0, "max": 0.0, "history": []}

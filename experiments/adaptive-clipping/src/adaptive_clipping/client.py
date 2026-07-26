@@ -168,12 +168,7 @@ class AdaptiveClippingClient(FHIRFederatedClient):
                     )
                     if self.clipping_strategy == "per_layer":
                         if self._clipper is None:
-                            self._clipper = PerLayerClipper(
-                                named_parameters=[
-                                    (n, p) for n, p in self._model.named_parameters() if p.requires_grad
-                                ],
-                                **self._clipper_kwargs,
-                            )
+                            self._clipper = PerLayerClipper(**self._clipper_kwargs)
                         updated_params, n_examples, metrics = adaptive_train_bert_one_round(
                             model=self._model, tokenizer=self._tokenizer, examples=self._train_examples,
                             label_index=self._label_index or {}, train_cfg=bert_cfg,
@@ -189,12 +184,7 @@ class AdaptiveClippingClient(FHIRFederatedClient):
                     set_lora_parameters(self._model, parameters)
                     if self.clipping_strategy == "per_layer":
                         if self._clipper is None:
-                            self._clipper = PerLayerClipper(
-                                named_parameters=[
-                                    (n, p) for n, p in self._model.named_parameters() if p.requires_grad
-                                ],
-                                **self._clipper_kwargs,
-                            )
+                            self._clipper = PerLayerClipper(**self._clipper_kwargs)
                         updated_params, n_examples, metrics = adaptive_train_one_round(
                             model=self._model, tokenizer=self._tokenizer, examples=self._train_examples,
                             train_cfg=train_cfg, clipper=self._clipper, server_round=server_round,

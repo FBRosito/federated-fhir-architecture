@@ -1,0 +1,28 @@
+# C0 sweep — point 4/4: C0=0.05 (encoder-scale global clip)
+#
+# Sweep goal: show that no single flat/global C0 resolves the ~20-500x scale
+# gap between encoder gradients (observed norms 0.002-0.054) and the
+# classifier head (observed norm ~0.97). sigma is pinned to 1.0 across all
+# 4 sweep points so epsilon is identical everywhere (verified via
+# RDPAccountant: 19.0163 at every C0 in this sweep) — the only thing that
+# changes point to point is the absolute noise std (C0 * sigma) and how much
+# of the true gradient signal each clip threshold preserves.
+#
+# 0.05 matches the deepest encoder layer's own gradient scale (encoder.layer.11
+# observed p75 ~= 0.047-0.055), so noise here is finally proportionate to the
+# encoder. But this same C0 is applied globally: the classifier head's real
+# gradient (norm ~0.97) is now clipped down to 0.05 every step — a ~95%
+# reduction in its own true gradient magnitude before any noise is even
+# added. Expected outcome: encoder-side SNR improves, but head-side learning
+# is expected to degrade from severe clipping distortion — the flip side of
+# the same structural problem this sweep is designed to expose.
+clipping_strategy: baseline_flat
+sweep_c0: 0.05
+sigma: 1.0
+num_rounds: 20
+num_seeds: 5
+num_silos: 5
+model: pubmedbert
+dataset: mimic4
+dirichlet_alpha: 0.5
+global_c0: 0.05

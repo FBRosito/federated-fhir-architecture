@@ -200,6 +200,42 @@ def load_bert_model(
         target_modules = lora_cfg.target_modules,
     )
     encoder = get_peft_model(encoder, peft_config)
+
+    # FFA-LoRA: freeze A matrices to eliminate quadratic DP noise amplification.
+    # Dual LoRA: add a local adapter (r=4) that stays on the silo permanently.
+    # Only the global adapter (default, r=8) is transmitted to the server.
+    # Activated via FL_LORA_MODE=ffa|dual (default: "standard" keeps both A and B trainable).
+    # References: Sun et al., ICLR 2024 (FFA-LoRA); FDLoRA (Qi et al., 2024),
+    # adapted here for FHIR-native FL with DP.
+    _LORA_MODE = os.getenv("FL_LORA_MODE", "standard").strip().lower()
+    if _LORA_MODE == "dual":
+        from peft import LoraConfig as _LocalLoraConfig
+        _local_config = _LocalLoraConfig(
+            task_type=peft_config.task_type,
+            r=4,                        # Half the rank of global (r=8)
+            lora_alpha=8,               # alpha = r for local adapter
+            target_modules=list(peft_config.target_modules),
+            lora_dropout=0.0,
+            bias="none",
+        )
+        encoder.add_adapter("local", _local_config)
+        encoder.set_adapter("default")  # Ensure global is active after setup
+        _local_count = sum(
+            1 for name, _ in encoder.named_parameters()
+            if "local" in name and "lora_" in name
+        )
+        log.info(
+            "Dual LoRA: global adapter r=8 (DP-SGD) + local adapter r=4 "
+            "(%d modules, no DP, never transmitted)", _local_count
+        )
+    elif _LORA_MODE == "ffa":
+        _frozen = 0
+        for name, param in encoder.named_parameters():
+            if "lora_A" in name:
+                param.requires_grad = False
+                _frozen += 1
+        log.info("FFA-LoRA: froze %d lora_A modules (requires_grad=False)", _frozen)
+
     encoder.print_trainable_parameters()
 
     hidden_size = encoder.config.hidden_size
