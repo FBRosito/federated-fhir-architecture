@@ -21,6 +21,11 @@ REPO_ROOT="$(cd "$EXP_ROOT/../.." && pwd)"
 
 export FHIR_SERVER_URL="${FHIR_SERVER_URL:-http://localhost:8080/fhir}"
 export BERT_LABEL_INDEX_PATH="${BERT_LABEL_INDEX_PATH:-$REPO_ROOT/etl_worker/data/label_index.json}"
+# load_bert_model() only registers the "local" PEFT adapter when this is
+# set to "dual" (see ai_client/model_setup_bert.py) — without it,
+# set_peft_model_state_dict(..., adapter_name="local") below fails with
+# KeyError: 'local' since the model has no such adapter to load into.
+export FL_LORA_MODE=dual
 
 cd "$EXP_ROOT"
 uv run python -m article3.cross_silo_eval \
