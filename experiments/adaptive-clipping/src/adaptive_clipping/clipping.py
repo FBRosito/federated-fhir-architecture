@@ -10,6 +10,7 @@ CUDA/model weights (only torch, numpy, re, collections).
 
 from __future__ import annotations
 
+import os
 import re
 from collections import defaultdict
 from collections.abc import Iterable
@@ -24,6 +25,62 @@ _LAYER_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\blayers\.(\d+)"), "layers.{}"),
     (re.compile(r"\bh\.(\d+)"), "h.{}"),
 ]
+
+
+def param_identity_fingerprint(
+    named_parameters: Iterable[tuple[str, torch.nn.Parameter]],
+) -> frozenset[int]:
+    """Fase 0 stale-reference guard, reusable by any component that captures
+    parameters and survives multiple FL rounds (clippers, accountants,
+    client-side aggregators — see docs/validated_environment.md).
+
+    Returns a frozenset of id(p) for every parameter — an identity
+    fingerprint, not a value hash. HERALD reloads a brand-new model object
+    every round via ai_client.fl_client._load_model() (unless
+    FL_KEEP_MODEL_IN_VRAM=true), so a fresh model's parameters get new
+    Python object ids every round. Call this once per round on the live
+    model's named_parameters() and compare against the previous round's
+    fingerprint:
+
+        fp = param_identity_fingerprint(model.named_parameters())
+        if fp == self._prev_fp and os.environ.get("FL_KEEP_MODEL_IN_VRAM", "false").lower() != "true":
+            raise RuntimeError("model did not reload between rounds — Bug 1 pattern")
+        self._prev_fp = fp
+
+    This lives at module level (not inside PerLayerClipper) because the
+    "did the model actually reload" check is a property of the CALLER's
+    model lifecycle, not of any specific clipper/accountant — see
+    AdaptiveClippingClient.fit() in client.py for the real call site.
+    """
+    return frozenset(id(p) for _, p in named_parameters)
+
+
+def assert_model_reloaded(
+    current_fingerprint: frozenset[int],
+    previous_fingerprint: frozenset[int] | None,
+    *,
+    component_name: str,
+) -> None:
+    """Raises if `current_fingerprint` is identical to `previous_fingerprint`
+    while FL_KEEP_MODEL_IN_VRAM is not 'true' — see param_identity_fingerprint.
+    No-ops on the first call (previous_fingerprint is None) or when
+    FL_KEEP_MODEL_IN_VRAM=true (same object reuse is then intentional).
+    """
+    if previous_fingerprint is None:
+        return
+    keep_in_vram = os.environ.get("FL_KEEP_MODEL_IN_VRAM", "false").strip().lower() == "true"
+    if keep_in_vram:
+        return
+    if current_fingerprint == previous_fingerprint:
+        raise RuntimeError(
+            f"{component_name}: received the exact same nn.Parameter objects as the "
+            f"previous round, but FL_KEEP_MODEL_IN_VRAM is not 'true' — a freshly "
+            f"reloaded model is expected every round. This is the historical "
+            f"stale-reference bug's signature (Bug 1): either _load_model() did not "
+            f"reload, or a cached model/parameter snapshot from a previous round is "
+            f"being reused. Set FL_KEEP_MODEL_IN_VRAM=true if reusing the model "
+            f"object across rounds is intentional here."
+        )
 
 
 class PerLayerClipper:
@@ -57,6 +114,15 @@ class PerLayerClipper:
 
         self._history: dict[str, list[float]] = defaultdict(list)
         self._current_round = 0
+
+        # Call-count (NOT round_idx) backing the history-length integrity
+        # check: production passes 1-indexed server_round while some tests
+        # use 0-indexed round numbers, so asserting against a caller-supplied
+        # round number would be convention-dependent. Counting calls directly
+        # is convention-agnostic and checks exactly the invariant that
+        # matters — one appended value per update_history() call, no more,
+        # no fewer.
+        self._n_updates = 0
 
     @staticmethod
     def group_by_attention_layer(
@@ -97,17 +163,75 @@ class PerLayerClipper:
         class docstring). Grouping is recomputed fresh from these live
         parameters every call and returned, so the clip+noise step can reuse
         the same live groups without touching any state cached on self.
+
+        Fase 0 guards (defense-in-depth against a regression reintroducing
+        Bug 1's pattern — see docs/validated_environment.md). Identity/
+        fingerprint verification of "did the model actually reload this
+        round" is intentionally NOT done here: this class is designed to be
+        importable and unit-testable without CUDA/model weights (see module
+        docstring), and legitimate unit tests reuse the same fake model
+        across simulated rounds to isolate the grouping/threshold math from
+        reload behavior. That check instead lives where the reload actually
+        happens — see AdaptiveClippingClient.fit() in client.py, which
+        compares each round's model parameter identities against the
+        previous round's right after self._load_model().
+
+        1. Grad presence: a group where NONE of its parameters carry a
+           gradient is the direct, observable symptom of Bug 1 — a stale
+           nn.Parameter belongs to a model already replaced by
+           _load_model(), so .grad is permanently None and clip+noise
+           silently stopped applying to that group.
+        2. History-length integrity: this method is called once per optimizer
+           step (training.py calls it inside the accumulation loop, so a
+           single round may call it many times when DP forces batch=1/
+           accum=1). Rather than asserting against round_idx — a
+           caller-supplied number whose convention varies (production passes
+           Flower's 1-indexed server_round; some tests use 0-indexed round
+           numbers) — this tracks its OWN call count and asserts every group
+           gains exactly one history entry per call: no more, no fewer. A
+           mismatch means a call silently appended zero or multiple times,
+           and compute_thresholds() can no longer be trusted.
         """
         self._current_round = round_idx
-        groups = self.group_by_attention_layer(
-            [(n, p) for n, p in named_parameters if p.requires_grad]
-        )
+        self._n_updates += 1
+        params_list = [(n, p) for n, p in named_parameters if p.requires_grad]
+
+        groups = self.group_by_attention_layer(params_list)
         for name, params in groups.items():
             grads = [p.grad.detach() for p in params if p.grad is not None]
+            if grads and len(grads) < len(params):
+                # Partial: some but not all params in the group lack a
+                # gradient. Plausible for a genuinely unused sub-branch, but
+                # worth surfacing loudly since it is also consistent with a
+                # PARTIALLY stale reference set.
+                raise RuntimeError(
+                    f"PerLayerClipper.update_history(round={round_idx}): group '{name}' "
+                    f"has {len(params)} trainable parameter(s) but only {len(grads)} "
+                    f"carry a gradient. Expected either all-or-nothing (a group with a "
+                    f"parameter that never reaches the forward graph would have NONE)."
+                )
             if not grads:
-                continue
+                if not params:
+                    continue
+                raise RuntimeError(
+                    f"PerLayerClipper.update_history(round={round_idx}): group '{name}' "
+                    f"has {len(params)} trainable parameter(s) but NONE have a .grad — "
+                    f"backward() did not populate gradients for this group this round. "
+                    f"This is the direct symptom of the historical stale-reference bug "
+                    f"(Bug 1): a cached nn.Parameter belonging to an already-replaced "
+                    f"model has .grad permanently None."
+                )
             group_norm = torch.norm(torch.stack([g.norm(2) for g in grads]), 2).item()
             self._history[name].append(float(group_norm))
+            if len(self._history[name]) != self._n_updates:
+                raise RuntimeError(
+                    f"PerLayerClipper history length mismatch for group '{name}': "
+                    f"expected {self._n_updates} accumulated value(s) after "
+                    f"{self._n_updates} update_history() call(s), got "
+                    f"{len(self._history[name])}. A call silently appended zero or "
+                    f"multiple times for this group — compute_thresholds() can no "
+                    f"longer be trusted."
+                )
         return groups
 
     def compute_thresholds(self) -> dict[str, float]:

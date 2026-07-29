@@ -141,3 +141,7 @@ experiment_logs.tar.gz
 
 # Graphify knowledge graph output
 graphify-out/
+
+# Unpublished paper analysis — internal only, do not commit
+docs/per_layer_epsilon_impact.md
+docs/nist_sp800_226_note.md

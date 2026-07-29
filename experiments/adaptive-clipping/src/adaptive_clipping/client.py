@@ -38,8 +38,13 @@ import torch
 from flwr.client import ClientApp, start_client
 from flwr.common import Context, NDArrays, Scalar
 
-from adaptive_clipping.clipping import PerLayerClipper
+from adaptive_clipping.clipping import (
+    PerLayerClipper,
+    assert_model_reloaded,
+    param_identity_fingerprint,
+)
 from adaptive_clipping.training import adaptive_train_bert_one_round, adaptive_train_one_round
+from evaluation.grad_norm_logger import GradNormLogger
 from evaluation.metrics_logger import GPUTimer
 from ai_client.fl_client import (
     _BATCH_SIZE,
@@ -64,6 +69,7 @@ from ai_client.fl_client import (
     _evaluate_local,
     _evaluate_summarization,
     _gpu_lock,
+    verify_effective_learning_rate,
 )
 from ai_client.model_setup import TrainingConfig, get_lora_parameters, set_lora_parameters
 
@@ -97,6 +103,13 @@ class AdaptiveClippingClient(FHIRFederatedClient):
             min_clip=min_clip, max_clip=max_clip,
         )
         self._clipper: PerLayerClipper | None = None
+        # Fase 0 stale-reference guard: fingerprints self._model's parameter
+        # identities right after each _load_model() call and compares against
+        # the previous round's, so a regression where the model silently
+        # fails to reload (the Bug 1 pattern) is caught immediately instead
+        # of producing a frozen clip-threshold history. See
+        # adaptive_clipping.clipping.assert_model_reloaded.
+        self._prev_model_fingerprint: frozenset[int] | None = None
 
     def fit(
         self,
@@ -107,6 +120,7 @@ class AdaptiveClippingClient(FHIRFederatedClient):
         proximal_mu = float(config.get("proximal_mu", 0.01))
         learning_rate = float(config.get("learning_rate", 2e-4))
         num_epochs = int(config.get("num_epochs", 1))
+        verify_effective_learning_rate(server_round, learning_rate)
 
         log.info(
             "fit — round %d | lr=%.2e | μ=%.4f | epochs=%d | strategy=%s",
@@ -146,6 +160,16 @@ class AdaptiveClippingClient(FHIRFederatedClient):
 
         with _gpu_lock():
             self._load_model()
+
+            # Fase 0 stale-reference guard: verify _load_model() actually gave
+            # us a new model object this round before doing anything else with
+            # it. See clipping.assert_model_reloaded / the class docstring.
+            _fp = param_identity_fingerprint(self._model.named_parameters())
+            assert_model_reloaded(
+                _fp, self._prev_model_fingerprint,
+                component_name=f"AdaptiveClippingClient.fit(round={server_round}, silo={self.partition_id})",
+            )
+            self._prev_model_fingerprint = _fp
 
             with GPUTimer() as _timer:
                 if self._backend == "bert":
@@ -285,6 +309,23 @@ class AdaptiveClippingClient(FHIRFederatedClient):
             log.info(
                 "DP cumulative: ε=%.4f (total_steps=%d across %d rounds so far)",
                 epsilon_cum, self._dp_total_steps, server_round,
+            )
+
+        # Fase 0 instrumentation: write the per-round grad-norm JSONL record
+        # (see evaluation.grad_norm_logger).
+        if "grad_norms_pre_clip" in metrics:
+            import json as _json
+            GradNormLogger().log_round(
+                server_round=server_round,
+                partition_id=self.partition_id,
+                grad_norms_pre_clip=_json.loads(metrics.pop("grad_norms_pre_clip")),
+                grad_norms_post_clip_noise=_json.loads(metrics.pop("grad_norms_post_clip_noise")),
+                clip_thresholds=_json.loads(metrics.pop("clip_threshold"))
+                    if self.clipping_strategy == "per_layer" else metrics.pop("clip_threshold", None),
+                learning_rate=metrics.pop("effective_lr", learning_rate),
+                epsilon_cumulative=metrics.get("epsilon_cumulative"),
+                noise_multiplier=_NOISE_MULTIPLIER,
+                extra={"clipping_strategy": self.clipping_strategy},
             )
 
         log.info(

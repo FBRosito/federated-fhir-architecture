@@ -19,21 +19,11 @@ Sensitivity accounting: per-layer thresholds returned by
 PerLayerClipper.compute_thresholds() are rescaled so that the vector
 sensitivity of the whole gradient, sqrt(sum(C_l**2) for C_l in thresholds),
 equals train_cfg.max_grad_norm (the same C0 the baseline pipeline uses).
-This bounds the CLIP correctly, but dp_accountant.step() is still called
-with a single scalar noise_multiplier while the actual noise std added per
-group is normalized_threshold_l * noise_multiplier — i.e. non-isotropic
-across the parameter vector. RDP for a Gaussian mechanism is not a function
-of the global L2 sensitivity alone when the per-coordinate noise variance
-is non-uniform: an adversary whose worst-case perturbation is spread across
-every low-threshold group (each saturating its own C_l simultaneously)
-produces a larger Rényi divergence than the scalar accountant reports,
-because the noise-to-sensitivity ratio the accountant assumes (std/C0) does
-not hold group-by-group when std is itself scaled by C_l. Confirmed
-empirically: dp_accountant.step()'s reported epsilon is bit-identical
-between "baseline" and "per_layer" runs at the same sigma, despite the
-per_layer path adding noise 18x-427x smaller on the encoder groups — see
-the audit that motivated this fix. Do not treat epsilon_cumulative from the
-per_layer path as an accurate privacy guarantee until this is corrected.
+This bounds the CLIP correctly. Privacy accounting for this path (whether
+dp_accountant.step()'s scalar noise_multiplier correctly captures the
+per-group noise this module actually applies) is under internal review —
+see internal docs. Do not treat epsilon_cumulative from the per_layer path
+as an accurate privacy guarantee until that review concludes.
 """
 
 from __future__ import annotations
@@ -52,6 +42,8 @@ from torch.utils.data import DataLoader, SubsetRandomSampler
 from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
 from adaptive_clipping.clipping import PerLayerClipper
+from evaluation.grad_norm_logger import is_enabled as _grad_norm_logging_enabled
+from evaluation.grad_norm_logger import snapshot_group_norms
 from ai_client.fhir_consumer import TrainingExample
 from ai_client.model_setup import DEFAULT_MAX_SEQ_LEN as LLM_DEFAULT_MAX_SEQ_LEN
 from ai_client.model_setup import TrainingConfig, build_dataset, get_lora_parameters
@@ -205,6 +197,13 @@ def adaptive_train_bert_one_round(
     global_step = 0
     optimizer.zero_grad()
 
+    # Fase 0 instrumentation (observation-only — see evaluation.grad_norm_logger).
+    # Overwritten every optimizer step; by the end of the round these hold the
+    # LAST step's snapshot as the round's representative sample.
+    _log_grad_norms = _grad_norm_logging_enabled()
+    _last_pre_clip_norms: dict[str, float] = {}
+    _last_post_clip_norms: dict[str, float] = {}
+
     for epoch in range(train_cfg.num_epochs):
         epoch_loss = 0.0
         valid_batches = 0
@@ -241,11 +240,15 @@ def adaptive_train_bert_one_round(
 
             if accum_count % effective_accum_steps == 0:
                 scaler.unscale_(optimizer)
+                if _log_grad_norms:
+                    _last_pre_clip_norms = snapshot_group_norms(model.named_parameters())
                 groups = clipper.update_history(server_round, model.named_parameters())
                 normalized_thresholds = _normalized_thresholds(clipper, train_cfg.max_grad_norm)
                 total_norm = _clip_and_noise_per_layer(
                     groups, normalized_thresholds, dp_active, train_cfg.noise_multiplier,
                 )
+                if _log_grad_norms:
+                    _last_post_clip_norms = snapshot_group_norms(model.named_parameters())
                 if dp_active and math.isfinite(total_norm) and dp_accountant is not None:
                     dp_accountant.step(
                         noise_multiplier=train_cfg.noise_multiplier, sample_rate=dp_sample_rate,
@@ -268,11 +271,15 @@ def adaptive_train_bert_one_round(
 
         if accum_count > 0:
             scaler.unscale_(optimizer)
+            if _log_grad_norms:
+                _last_pre_clip_norms = snapshot_group_norms(model.named_parameters())
             groups = clipper.update_history(server_round, model.named_parameters())
             normalized_thresholds = _normalized_thresholds(clipper, train_cfg.max_grad_norm)
             total_norm = _clip_and_noise_per_layer(
                 groups, normalized_thresholds, dp_active, train_cfg.noise_multiplier,
             )
+            if _log_grad_norms:
+                _last_post_clip_norms = snapshot_group_norms(model.named_parameters())
             if dp_active and math.isfinite(total_norm) and dp_accountant is not None:
                 dp_accountant.step(
                     noise_multiplier=train_cfg.noise_multiplier, sample_rate=dp_sample_rate,
@@ -294,6 +301,11 @@ def adaptive_train_bert_one_round(
         "per_layer_thresholds": json.dumps(normalized_thresholds),
         "per_layer_norms": json.dumps(clipper.get_history_summary()),
     }
+    if _log_grad_norms:
+        metrics["grad_norms_pre_clip"]        = json.dumps(_last_pre_clip_norms)
+        metrics["grad_norms_post_clip_noise"] = json.dumps(_last_post_clip_norms)
+        metrics["clip_threshold"]             = json.dumps(normalized_thresholds)
+        metrics["effective_lr"]               = optimizer.param_groups[0]["lr"]
 
     if dp_active and dp_accountant is not None:
         try:

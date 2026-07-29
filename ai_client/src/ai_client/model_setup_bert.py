@@ -44,6 +44,9 @@ from transformers import (
     PreTrainedTokenizerBase,
 )
 
+from evaluation.grad_norm_logger import is_enabled as _grad_norm_logging_enabled
+from evaluation.grad_norm_logger import snapshot_group_norms
+
 log = logging.getLogger(__name__)
 
 PUBMEDBERT_MODEL_ID = "microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract-fulltext"
@@ -442,6 +445,14 @@ def train_bert_one_round(
     global_step     = 0
     optimizer.zero_grad()
 
+    # Fase 0 instrumentation (observation-only — never influences clip/noise/
+    # aggregation; see evaluation.grad_norm_logger). Overwritten every
+    # optimizer step, so by the end of the round these hold the LAST step's
+    # snapshot as the round's representative sample.
+    _log_grad_norms = _grad_norm_logging_enabled()
+    _last_pre_clip_norms: dict[str, float] = {}
+    _last_post_clip_norms: dict[str, float] = {}
+
     for epoch in range(train_cfg.num_epochs):
         epoch_loss    = 0.0
         valid_batches = 0
@@ -479,6 +490,8 @@ def train_bert_one_round(
 
             if accum_count % effective_accum_steps == 0:
                 scaler.unscale_(optimizer)
+                if _log_grad_norms:
+                    _last_pre_clip_norms = snapshot_group_norms(model.named_parameters())
                 total_norm = torch.nn.utils.clip_grad_norm_(
                     filter(lambda p: p.requires_grad, model.parameters()),
                     train_cfg.max_grad_norm,
@@ -500,6 +513,8 @@ def train_bert_one_round(
                             noise_multiplier=train_cfg.noise_multiplier,
                             sample_rate=dp_sample_rate,
                         )
+                if _log_grad_norms:
+                    _last_post_clip_norms = snapshot_group_norms(model.named_parameters())
                 if math.isfinite(float(total_norm)):
                     scaler.step(optimizer)
                 else:
@@ -519,6 +534,8 @@ def train_bert_one_round(
 
         if accum_count > 0:
             scaler.unscale_(optimizer)
+            if _log_grad_norms:
+                _last_pre_clip_norms = snapshot_group_norms(model.named_parameters())
             total_norm = torch.nn.utils.clip_grad_norm_(
                 filter(lambda p: p.requires_grad, model.parameters()), train_cfg.max_grad_norm
             )
@@ -539,6 +556,8 @@ def train_bert_one_round(
                         noise_multiplier=train_cfg.noise_multiplier,
                         sample_rate=dp_sample_rate,
                     )
+            if _log_grad_norms:
+                _last_post_clip_norms = snapshot_group_norms(model.named_parameters())
             if math.isfinite(float(total_norm)):
                 scaler.step(optimizer)
             scaler.update()
@@ -551,6 +570,13 @@ def train_bert_one_round(
 
     avg_loss = cumulative_loss / max(train_cfg.num_epochs, 1)
     metrics  = {"train_loss": round(avg_loss, 6)}
+
+    if _log_grad_norms:
+        import json as _json
+        metrics["grad_norms_pre_clip"]        = _json.dumps(_last_pre_clip_norms)
+        metrics["grad_norms_post_clip_noise"] = _json.dumps(_last_post_clip_norms)
+        metrics["clip_threshold"]             = train_cfg.max_grad_norm
+        metrics["effective_lr"]               = optimizer.param_groups[0]["lr"]
 
     if dp_active and dp_accountant is not None:
         try:

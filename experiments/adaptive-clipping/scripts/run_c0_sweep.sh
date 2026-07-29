@@ -76,6 +76,10 @@ export GPU_LOCK_PATH="${GPU_LOCK_PATH:-/tmp/adaptive_clipping_gpu.lock}"
 # is on PATH. gcc is installed as gcc-12 but not aliased to `gcc`.
 export CC="${CC:-/usr/bin/gcc-12}"
 
+# Fase 0 preflight — aborts before any GPU time is spent if the environment
+# doesn't match docs/validated_environment.md (dataset size, LR, per-silo counts).
+(cd "$REPO_ROOT" && uv run python scripts/preflight_check.py) || { log "[$TAG] preflight FAILED — aborting."; exit 1; }
+
 cd "$EXP_ROOT"
 mkdir -p "$LOGS_DIR"
 

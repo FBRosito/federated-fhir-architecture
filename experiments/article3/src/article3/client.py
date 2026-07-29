@@ -40,6 +40,7 @@ from article3.dual_training import (
     local_adapter_path,
     _load_local_adapter,
 )
+from evaluation.grad_norm_logger import GradNormLogger
 from evaluation.metrics_logger import GPUTimer
 from ai_client.fl_client import (
     _BATCH_SIZE,
@@ -58,6 +59,7 @@ from ai_client.fl_client import (
     FHIRFederatedClient,
     _compute_cumulative_epsilon,
     _gpu_lock,
+    verify_effective_learning_rate,
 )
 
 log = logging.getLogger(__name__)
@@ -79,6 +81,7 @@ class DualLoraClient(FHIRFederatedClient):
         proximal_mu = float(config.get("proximal_mu", 0.01))
         learning_rate = float(config.get("learning_rate", 2e-4))
         num_epochs = int(config.get("num_epochs", 1))
+        verify_effective_learning_rate(server_round, learning_rate)
 
         log.info(
             "fit — round %d | lr=%.2e | μ=%.4f | epochs=%d | lora_mode=dual",
@@ -167,6 +170,24 @@ class DualLoraClient(FHIRFederatedClient):
             log.info(
                 "DP cumulative: ε=%.4f (total_steps=%d across %d rounds so far)",
                 epsilon_cum, self._dp_total_steps, server_round,
+            )
+
+        # Fase 0 instrumentation: write the per-round grad-norm JSONL record
+        # (see evaluation.grad_norm_logger). Reflects the global (DP-SGD)
+        # adapter pass — dual_train_bert_one_round() returns that pass's
+        # metrics; the local (no-DP) pass is side-effect only.
+        if "grad_norms_pre_clip" in metrics:
+            import json as _json
+            GradNormLogger().log_round(
+                server_round=server_round,
+                partition_id=self.partition_id,
+                grad_norms_pre_clip=_json.loads(metrics.pop("grad_norms_pre_clip")),
+                grad_norms_post_clip_noise=_json.loads(metrics.pop("grad_norms_post_clip_noise")),
+                clip_thresholds=metrics.pop("clip_threshold", None),
+                learning_rate=metrics.pop("effective_lr", learning_rate),
+                epsilon_cumulative=metrics.get("epsilon_cumulative"),
+                noise_multiplier=_NOISE_MULTIPLIER,
+                extra={"lora_mode": "dual"},
             )
 
         log.info(

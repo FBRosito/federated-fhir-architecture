@@ -48,6 +48,8 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
+from evaluation.grad_norm_logger import GradNormLogger, is_enabled as _grad_norm_logging_enabled
+
 import flwr as fl
 from flwr.client import ClientApp, NumPyClient, start_client
 from flwr.common import Context, NDArrays, Scalar
@@ -443,6 +445,50 @@ def _evaluate_summarization(
     return proxy_loss, len(examples), flat
 
 
+def verify_effective_learning_rate(server_round: int, learning_rate: float) -> None:
+    """Fase 0 guard: the client always receives `learning_rate` via Flower's
+    per-round `config` dict (config.get("learning_rate", ...)), computed
+    server-side from FL_LEARNING_RATE — see fl_server.server.make_fit_config_fn.
+    The client process's own FL_LEARNING_RATE env var is never read directly
+    in fit(). This is the exact channel the historical LR bug broke silently:
+    an un-exported FL_LEARNING_RATE on the SERVER process fell back to its
+    5e-5 default with no error raised anywhere, and every client faithfully
+    applied the wrong LR for the whole run.
+
+    Compares the received learning_rate against THIS process's own
+    FL_LEARNING_RATE env var — correct only when the experiment script
+    exports it once for both the server and client processes, which is the
+    pattern every run_*.sh in this repo follows. Only checked on rounds 1-2
+    (before fl_server's LR decays to 40% for round 3+) so this does not need
+    to replicate that schedule here.
+
+    No-ops (does not raise) if FL_LEARNING_RATE is unset in THIS process,
+    since scripts/preflight_check.py already aborts the whole run in that
+    case before the server/clients even start — this is a second, narrower
+    check for whether the value that reached THIS client via the FL config
+    channel actually matches, not a re-check of its mere presence.
+    """
+    raw = os.environ.get("FL_LEARNING_RATE")
+    if raw is None or server_round > 2:
+        return
+    expected = float(raw)
+    if not math.isclose(learning_rate, expected, rel_tol=1e-6):
+        raise RuntimeError(
+            f"Effective learning_rate={learning_rate:.2e} received from the server "
+            f"config (round {server_round}) does not match this process's "
+            f"FL_LEARNING_RATE={expected:.2e}. This is the historical LR bug's exact "
+            f"failure mode: the SERVER process must also have FL_LEARNING_RATE "
+            f"exported (every run_*.sh here exports it once for both server and "
+            f"client processes) — if only this client's environment has it set, the "
+            f"server silently falls back to its own default (5e-5) and this "
+            f"round-1/2 mismatch is the only signal that would catch it."
+        )
+    log.info(
+        "Fase 0: effective LR verified — round %d, lr=%.2e matches FL_LEARNING_RATE.",
+        server_round, learning_rate,
+    )
+
+
 def _compute_cumulative_epsilon(
     noise_multiplier: float,
     sample_rate: float,
@@ -742,6 +788,7 @@ class FHIRFederatedClient(NumPyClient):
         proximal_mu  = float(config.get("proximal_mu", 0.01))
         learning_rate = float(config.get("learning_rate", 2e-4))
         num_epochs    = int(config.get("num_epochs", 1))
+        verify_effective_learning_rate(server_round, learning_rate)
 
         log.info(
             "fit — round %d | lr=%.2e | μ=%.4f | epochs=%d",
@@ -928,6 +975,23 @@ class FHIRFederatedClient(NumPyClient):
             log.info(
                 "DP cumulative: ε=%.4f (total_steps=%d across %d rounds so far)",
                 epsilon_cum, self._dp_total_steps, server_round,
+            )
+
+        # Fase 0 instrumentation: write the per-round grad-norm JSONL record
+        # (see evaluation.grad_norm_logger). Only fires when model_setup_bert
+        # populated grad_norms_pre_clip — i.e. LOG_GRAD_NORMS was enabled and
+        # this fit() actually trained (not the "no data" early-return path).
+        if _grad_norm_logging_enabled() and "grad_norms_pre_clip" in metrics:
+            import json as _json
+            GradNormLogger().log_round(
+                server_round=server_round,
+                partition_id=self.partition_id,
+                grad_norms_pre_clip=_json.loads(metrics.pop("grad_norms_pre_clip")),
+                grad_norms_post_clip_noise=_json.loads(metrics.pop("grad_norms_post_clip_noise")),
+                clip_thresholds=metrics.pop("clip_threshold", None),
+                learning_rate=metrics.pop("effective_lr", learning_rate),
+                epsilon_cumulative=metrics.get("epsilon_cumulative"),
+                noise_multiplier=_NOISE_MULTIPLIER,
             )
 
         log.info(

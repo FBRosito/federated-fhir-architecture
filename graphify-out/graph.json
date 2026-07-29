@@ -4,6 +4,141 @@
   "graph": {},
   "nodes": [
     {
+      "label": "post-checkout",
+      "file_type": "code",
+      "source_file": ".githooks/post-checkout",
+      "source_location": "L1",
+      "metadata": {
+        "language": "bash",
+        "kind": "file"
+      },
+      "_origin": "ast",
+      "id": "githooks_post_checkout",
+      "community": 60,
+      "community_name": "post-checkout",
+      "norm_label": "post-checkout"
+    },
+    {
+      "label": "post-checkout script",
+      "file_type": "code",
+      "source_file": ".githooks/post-checkout",
+      "source_location": "L1",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_entrypoint"
+      },
+      "_origin": "ast",
+      "id": "githooks_post_checkout__entry",
+      "community": 60,
+      "community_name": "post-checkout",
+      "norm_label": "post-checkout script"
+    },
+    {
+      "label": "PYTHONHASHSEED",
+      "file_type": "code",
+      "source_file": ".githooks/post-checkout",
+      "source_location": "L9",
+      "metadata": {
+        "language": "bash",
+        "kind": "code"
+      },
+      "_origin": "ast",
+      "id": "githooks_post_checkout_pythonhashseed",
+      "community": 60,
+      "community_name": "post-checkout",
+      "norm_label": "pythonhashseed"
+    },
+    {
+      "label": "GRAPHIFY_REBUILD_LOG",
+      "file_type": "code",
+      "source_file": ".githooks/post-checkout",
+      "source_location": "L133",
+      "metadata": {
+        "language": "bash",
+        "kind": "code"
+      },
+      "_origin": "ast",
+      "id": "githooks_post_checkout_graphify_rebuild_log",
+      "community": 60,
+      "community_name": "post-checkout",
+      "norm_label": "graphify_rebuild_log"
+    },
+    {
+      "label": "post-commit",
+      "file_type": "code",
+      "source_file": ".githooks/post-commit",
+      "source_location": "L1",
+      "metadata": {
+        "language": "bash",
+        "kind": "file"
+      },
+      "_origin": "ast",
+      "id": "githooks_post_commit",
+      "community": 59,
+      "community_name": "post-commit",
+      "norm_label": "post-commit"
+    },
+    {
+      "label": "post-commit script",
+      "file_type": "code",
+      "source_file": ".githooks/post-commit",
+      "source_location": "L1",
+      "metadata": {
+        "language": "bash",
+        "kind": "bash_entrypoint"
+      },
+      "_origin": "ast",
+      "id": "githooks_post_commit__entry",
+      "community": 59,
+      "community_name": "post-commit",
+      "norm_label": "post-commit script"
+    },
+    {
+      "label": "PYTHONHASHSEED",
+      "file_type": "code",
+      "source_file": ".githooks/post-commit",
+      "source_location": "L9",
+      "metadata": {
+        "language": "bash",
+        "kind": "code"
+      },
+      "_origin": "ast",
+      "id": "githooks_post_commit_pythonhashseed",
+      "community": 59,
+      "community_name": "post-commit",
+      "norm_label": "pythonhashseed"
+    },
+    {
+      "label": "GRAPHIFY_CHANGED",
+      "file_type": "code",
+      "source_file": ".githooks/post-commit",
+      "source_location": "L127",
+      "metadata": {
+        "language": "bash",
+        "kind": "code"
+      },
+      "_origin": "ast",
+      "id": "githooks_post_commit_graphify_changed",
+      "community": 59,
+      "community_name": "post-commit",
+      "norm_label": "graphify_changed"
+    },
+    {
+      "label": "GRAPHIFY_REBUILD_LOG",
+      "file_type": "code",
+      "source_file": ".githooks/post-commit",
+      "source_location": "L135",
+      "metadata": {
+        "language": "bash",
+        "kind": "code"
+      },
+      "_origin": "ast",
+      "id": "githooks_post_commit_graphify_rebuild_log",
+      "community": 59,
+      "community_name": "post-commit",
+      "norm_label": "graphify_rebuild_log"
+    },
+    {
       "label": "AGENTS.md",
       "file_type": "document",
       "source_file": "AGENTS.md",
@@ -58,7 +193,7 @@
       "_origin": "ast",
       "community": 17,
       "norm_label": "centralized_baseline.py",
-      "community_name": "centralized_baseline.py",
+      "community_name": "TrainingExample",
       "id": "ai_client_src_ai_client_centralized_baseline"
     },
     {
@@ -69,7 +204,7 @@
       "_origin": "ast",
       "community": 17,
       "norm_label": "_stratified_split()",
-      "community_name": "centralized_baseline.py",
+      "community_name": "TrainingExample",
       "id": "ai_client_src_ai_client_centralized_baseline_stratified_split"
     },
     {
@@ -80,7 +215,7 @@
       "_origin": "ast",
       "community": 17,
       "norm_label": "load_mimic_direct()",
-      "community_name": "centralized_baseline.py",
+      "community_name": "TrainingExample",
       "id": "ai_client_src_ai_client_centralized_baseline_load_mimic_direct"
     },
     {
@@ -91,7 +226,7 @@
       "_origin": "ast",
       "community": 17,
       "norm_label": "path",
-      "community_name": "centralized_baseline.py",
+      "community_name": "TrainingExample",
       "id": "ai_client_src_ai_client_centralized_baseline_py_path"
     },
     {
@@ -102,7 +237,7 @@
       "_origin": "ast",
       "community": 17,
       "norm_label": "load_mimic_direct_multilabel()",
-      "community_name": "centralized_baseline.py",
+      "community_name": "TrainingExample",
       "id": "ai_client_src_ai_client_centralized_baseline_load_mimic_direct_multilabel"
     },
     {
@@ -113,7 +248,7 @@
       "_origin": "ast",
       "community": 17,
       "norm_label": "run_centralized()",
-      "community_name": "centralized_baseline.py",
+      "community_name": "TrainingExample",
       "id": "ai_client_src_ai_client_centralized_baseline_run_centralized"
     },
     {
@@ -124,7 +259,7 @@
       "_origin": "ast",
       "community": 17,
       "norm_label": "run_centralized_bert()",
-      "community_name": "centralized_baseline.py",
+      "community_name": "TrainingExample",
       "id": "ai_client_src_ai_client_centralized_baseline_run_centralized_bert"
     },
     {
@@ -135,7 +270,7 @@
       "_origin": "ast",
       "community": 17,
       "norm_label": "main()",
-      "community_name": "centralized_baseline.py",
+      "community_name": "TrainingExample",
       "id": "ai_client_src_ai_client_centralized_baseline_main"
     },
     {
@@ -146,7 +281,7 @@
       "_origin": "ast",
       "community": 17,
       "norm_label": "centralized_baseline.py ----------------------- centralised baseline for...",
-      "community_name": "centralized_baseline.py",
+      "community_name": "TrainingExample",
       "id": "ai_client_src_ai_client_centralized_baseline_rationale_1"
     },
     {
@@ -157,7 +292,7 @@
       "_origin": "ast",
       "community": 17,
       "norm_label": "80/20 split stratified by primary icd-10 code.",
-      "community_name": "centralized_baseline.py",
+      "community_name": "TrainingExample",
       "id": "ai_client_src_ai_client_centralized_baseline_rationale_74"
     },
     {
@@ -168,7 +303,7 @@
       "_origin": "ast",
       "community": 17,
       "norm_label": "loads mimic-iv for the llm backend (primary icd-10 diagnosis). applies the same...",
-      "community_name": "centralized_baseline.py",
+      "community_name": "TrainingExample",
       "id": "ai_client_src_ai_client_centralized_baseline_rationale_109"
     },
     {
@@ -179,7 +314,7 @@
       "_origin": "ast",
       "community": 17,
       "norm_label": "loads mimic-iv for the bert backend with multi-label ground truth. difference...",
-      "community_name": "centralized_baseline.py",
+      "community_name": "TrainingExample",
       "id": "ai_client_src_ai_client_centralized_baseline_rationale_181"
     },
     {
@@ -190,7 +325,7 @@
       "_origin": "ast",
       "community": 17,
       "norm_label": "centralised baseline for experiment b: llama text generation.",
-      "community_name": "centralized_baseline.py",
+      "community_name": "TrainingExample",
       "id": "ai_client_src_ai_client_centralized_baseline_rationale_276"
     },
     {
@@ -201,7 +336,7 @@
       "_origin": "ast",
       "community": 17,
       "norm_label": "centralised baseline for experiment a: pubmedbert + icd-10 multi-label. uses...",
-      "community_name": "centralized_baseline.py",
+      "community_name": "TrainingExample",
       "id": "ai_client_src_ai_client_centralized_baseline_rationale_359"
     },
     {
@@ -221,7 +356,7 @@
       "source_file": "ai_client/src/ai_client/fhir_consumer.py",
       "source_location": "L39",
       "_origin": "ast",
-      "community": 8,
+      "community": 17,
       "norm_label": "trainingexample",
       "community_name": "TrainingExample",
       "id": "ai_client_src_ai_client_fhir_consumer_trainingexample"
@@ -397,7 +532,7 @@
       "source_file": "ai_client/src/ai_client/fhir_consumer.py",
       "source_location": "L40",
       "_origin": "ast",
-      "community": 8,
+      "community": 17,
       "norm_label": "(clinical_text, icd-10_label) pair extracted from the fhir server. attributes:...",
       "community_name": "TrainingExample",
       "id": "ai_client_src_ai_client_fhir_consumer_rationale_40"
@@ -529,9 +664,9 @@
       "source_file": "ai_client/src/ai_client/fhir_consumer_bert.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 17,
+      "community": 12,
       "norm_label": "fhir_consumer_bert.py",
-      "community_name": "centralized_baseline.py",
+      "community_name": "fhir_consumer.py",
       "id": "ai_client_src_ai_client_fhir_consumer_bert"
     },
     {
@@ -542,7 +677,7 @@
       "_origin": "ast",
       "community": 17,
       "norm_label": "build_label_index()",
-      "community_name": "centralized_baseline.py",
+      "community_name": "TrainingExample",
       "id": "ai_client_src_ai_client_fhir_consumer_bert_build_label_index"
     },
     {
@@ -553,7 +688,7 @@
       "_origin": "ast",
       "community": 17,
       "norm_label": "save_label_index()",
-      "community_name": "centralized_baseline.py",
+      "community_name": "TrainingExample",
       "id": "ai_client_src_ai_client_fhir_consumer_bert_save_label_index"
     },
     {
@@ -562,9 +697,9 @@
       "source_file": "ai_client/src/ai_client/fhir_consumer_bert.py",
       "source_location": "L89",
       "_origin": "ast",
-      "community": 17,
+      "community": 12,
       "norm_label": "fetch_bert_training_data()",
-      "community_name": "centralized_baseline.py",
+      "community_name": "fhir_consumer.py",
       "id": "ai_client_src_ai_client_fhir_consumer_bert_fetch_bert_training_data"
     },
     {
@@ -573,9 +708,9 @@
       "source_file": "ai_client/src/ai_client/fhir_consumer_bert.py",
       "source_location": "L1",
       "_origin": "ast",
-      "community": 17,
+      "community": 12,
       "norm_label": "fhir_consumer_bert.py --------------------- multi-label data preparation layer...",
-      "community_name": "centralized_baseline.py",
+      "community_name": "fhir_consumer.py",
       "id": "ai_client_src_ai_client_fhir_consumer_bert_rationale_1"
     },
     {
@@ -586,7 +721,7 @@
       "_origin": "ast",
       "community": 17,
       "norm_label": "builds or loads the icd-10 label vocabulary. preference order: 1. load from...",
-      "community_name": "centralized_baseline.py",
+      "community_name": "TrainingExample",
       "id": "ai_client_src_ai_client_fhir_consumer_bert_rationale_38"
     },
     {
@@ -597,7 +732,7 @@
       "_origin": "ast",
       "community": 17,
       "norm_label": "saves the label index to json for sharing across silos.",
-      "community_name": "centralized_baseline.py",
+      "community_name": "TrainingExample",
       "id": "ai_client_src_ai_client_fhir_consumer_bert_rationale_82"
     },
     {
@@ -606,9 +741,9 @@
       "source_file": "ai_client/src/ai_client/fhir_consumer_bert.py",
       "source_location": "L96",
       "_origin": "ast",
-      "community": 17,
+      "community": 12,
       "norm_label": "fetches fhir examples and prepares the label index for the bert backend. args:...",
-      "community_name": "centralized_baseline.py",
+      "community_name": "fhir_consumer.py",
       "id": "ai_client_src_ai_client_fhir_consumer_bert_rationale_96"
     },
     {
@@ -826,9 +961,9 @@
       "source_file": "ai_client/src/ai_client/fl_client.py",
       "source_location": "L129",
       "_origin": "ast",
-      "community": 7,
+      "community": 20,
       "norm_label": "_gpu_lock()",
-      "community_name": ".fit",
+      "community_name": "FHIRFederatedClient",
       "id": "ai_client_src_ai_client_fl_client_gpu_lock"
     },
     {
@@ -848,9 +983,9 @@
       "source_file": "ai_client/src/ai_client/fl_client.py",
       "source_location": "L207",
       "_origin": "ast",
-      "community": 20,
+      "community": 19,
       "norm_label": "_extract_icd_codes()",
-      "community_name": ".evaluate",
+      "community_name": "fl_client.py",
       "id": "ai_client_src_ai_client_fl_client_extract_icd_codes"
     },
     {
@@ -859,9 +994,9 @@
       "source_file": "ai_client/src/ai_client/fl_client.py",
       "source_location": "L212",
       "_origin": "ast",
-      "community": 20,
+      "community": 17,
       "norm_label": "_evaluate_local()",
-      "community_name": ".evaluate",
+      "community_name": "TrainingExample",
       "id": "ai_client_src_ai_client_fl_client_evaluate_local"
     },
     {
@@ -870,9 +1005,9 @@
       "source_file": "ai_client/src/ai_client/fl_client.py",
       "source_location": "L362",
       "_origin": "ast",
-      "community": 7,
+      "community": 19,
       "norm_label": "_evaluate_summarization()",
-      "community_name": ".fit",
+      "community_name": "fl_client.py",
       "id": "ai_client_src_ai_client_fl_client_evaluate_summarization"
     },
     {
@@ -892,9 +1027,9 @@
       "source_file": "ai_client/src/ai_client/fl_client.py",
       "source_location": "L468",
       "_origin": "ast",
-      "community": 19,
+      "community": 20,
       "norm_label": "fhirfederatedclient",
-      "community_name": "fl_client.py",
+      "community_name": "FHIRFederatedClient",
       "id": "ai_client_src_ai_client_fl_client_fhirfederatedclient"
     },
     {
@@ -903,9 +1038,9 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 19,
+      "community": 20,
       "norm_label": "numpyclient",
-      "community_name": "fl_client.py",
+      "community_name": "FHIRFederatedClient",
       "id": "numpyclient"
     },
     {
@@ -914,9 +1049,9 @@
       "source_file": "ai_client/src/ai_client/fl_client.py",
       "source_location": "L486",
       "_origin": "ast",
-      "community": 19,
+      "community": 8,
       "norm_label": ".__init__()",
-      "community_name": "fl_client.py",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_fl_client_fhirfederatedclient_init"
     },
     {
@@ -927,7 +1062,7 @@
       "_origin": "ast",
       "community": 20,
       "norm_label": "._load_model()",
-      "community_name": ".evaluate",
+      "community_name": "FHIRFederatedClient",
       "id": "ai_client_src_ai_client_fl_client_fhirfederatedclient_load_model"
     },
     {
@@ -938,7 +1073,7 @@
       "_origin": "ast",
       "community": 20,
       "norm_label": "._unload_model()",
-      "community_name": ".evaluate",
+      "community_name": "FHIRFederatedClient",
       "id": "ai_client_src_ai_client_fl_client_fhirfederatedclient_unload_model"
     },
     {
@@ -947,9 +1082,9 @@
       "source_file": "ai_client/src/ai_client/fl_client.py",
       "source_location": "L594",
       "_origin": "ast",
-      "community": 19,
+      "community": 20,
       "norm_label": "._ensure_data()",
-      "community_name": "fl_client.py",
+      "community_name": "FHIRFederatedClient",
       "id": "ai_client_src_ai_client_fl_client_fhirfederatedclient_ensure_data"
     },
     {
@@ -960,7 +1095,7 @@
       "_origin": "ast",
       "community": 20,
       "norm_label": ".get_parameters()",
-      "community_name": ".evaluate",
+      "community_name": "FHIRFederatedClient",
       "id": "ai_client_src_ai_client_fl_client_fhirfederatedclient_get_parameters"
     },
     {
@@ -971,7 +1106,7 @@
       "_origin": "ast",
       "community": 20,
       "norm_label": "scalar",
-      "community_name": ".evaluate",
+      "community_name": "FHIRFederatedClient",
       "id": "ai_client_src_ai_client_fl_client_py_scalar"
     },
     {
@@ -982,7 +1117,7 @@
       "_origin": "ast",
       "community": 20,
       "norm_label": "ndarrays",
-      "community_name": ".evaluate",
+      "community_name": "FHIRFederatedClient",
       "id": "ai_client_src_ai_client_fl_client_py_ndarrays"
     },
     {
@@ -1004,7 +1139,7 @@
       "_origin": "ast",
       "community": 20,
       "norm_label": ".evaluate()",
-      "community_name": ".evaluate",
+      "community_name": "FHIRFederatedClient",
       "id": "ai_client_src_ai_client_fl_client_fhirfederatedclient_evaluate"
     },
     {
@@ -1015,7 +1150,7 @@
       "_origin": "ast",
       "community": 20,
       "norm_label": ".get_properties()",
-      "community_name": ".evaluate",
+      "community_name": "FHIRFederatedClient",
       "id": "ai_client_src_ai_client_fl_client_fhirfederatedclient_get_properties"
     },
     {
@@ -1079,9 +1214,9 @@
       "source_file": "ai_client/src/ai_client/fl_client.py",
       "source_location": "L130",
       "_origin": "ast",
-      "community": 7,
+      "community": 20,
       "norm_label": "serializes gpu access between silos via posix flock on a shared docker volume....",
-      "community_name": ".fit",
+      "community_name": "FHIRFederatedClient",
       "id": "ai_client_src_ai_client_fl_client_rationale_130"
     },
     {
@@ -1101,9 +1236,9 @@
       "source_file": "ai_client/src/ai_client/fl_client.py",
       "source_location": "L208",
       "_origin": "ast",
-      "community": 20,
+      "community": 19,
       "norm_label": "extracts all icd-10 codes from generated text.",
-      "community_name": ".evaluate",
+      "community_name": "fl_client.py",
       "id": "ai_client_src_ai_client_fl_client_rationale_208"
     },
     {
@@ -1112,9 +1247,9 @@
       "source_file": "ai_client/src/ai_client/fl_client.py",
       "source_location": "L220",
       "_origin": "ast",
-      "community": 20,
+      "community": 17,
       "norm_label": "computes loss/perplexity and optionally icd-10 extraction metrics on the local...",
-      "community_name": ".evaluate",
+      "community_name": "TrainingExample",
       "id": "ai_client_src_ai_client_fl_client_rationale_220"
     },
     {
@@ -1123,9 +1258,9 @@
       "source_file": "ai_client/src/ai_client/fl_client.py",
       "source_location": "L369",
       "_origin": "ast",
-      "community": 7,
+      "community": 19,
       "norm_label": "generates discharge summaries and computes rouge-1/2/l + bertscore(pubmedbert)....",
-      "community_name": ".fit",
+      "community_name": "fl_client.py",
       "id": "ai_client_src_ai_client_fl_client_rationale_369"
     },
     {
@@ -1145,9 +1280,9 @@
       "source_file": "ai_client/src/ai_client/fl_client.py",
       "source_location": "L469",
       "_origin": "ast",
-      "community": 19,
+      "community": 20,
       "norm_label": "federated client that: 1. consumes fhir resources (condition +...",
-      "community_name": "fl_client.py",
+      "community_name": "FHIRFederatedClient",
       "id": "ai_client_src_ai_client_fl_client_rationale_469"
     },
     {
@@ -1158,7 +1293,7 @@
       "_origin": "ast",
       "community": 20,
       "norm_label": "loads the model into vram, selecting the correct backend. backend \"llm\" / \"llm-...",
-      "community_name": ".evaluate",
+      "community_name": "FHIRFederatedClient",
       "id": "ai_client_src_ai_client_fl_client_rationale_529"
     },
     {
@@ -1169,7 +1304,7 @@
       "_origin": "ast",
       "community": 20,
       "norm_label": "removes the model from vram and clears the cuda cache. must be called at the...",
-      "community_name": ".evaluate",
+      "community_name": "FHIRFederatedClient",
       "id": "ai_client_src_ai_client_fl_client_rationale_576"
     },
     {
@@ -1178,9 +1313,9 @@
       "source_file": "ai_client/src/ai_client/fl_client.py",
       "source_location": "L595",
       "_origin": "ast",
-      "community": 19,
+      "community": 20,
       "norm_label": "fetches fhir examples and performs the train/eval split on first call. retries...",
-      "community_name": "fl_client.py",
+      "community_name": "FHIRFederatedClient",
       "id": "ai_client_src_ai_client_fl_client_rationale_595"
     },
     {
@@ -1191,7 +1326,7 @@
       "_origin": "ast",
       "community": 20,
       "norm_label": "returns initial lora adapter weights as a list of ndarrays. called by the...",
-      "community_name": ".evaluate",
+      "community_name": "FHIRFederatedClient",
       "id": "ai_client_src_ai_client_fl_client_rationale_694"
     },
     {
@@ -1213,7 +1348,7 @@
       "_origin": "ast",
       "community": 20,
       "norm_label": "evaluates the global model on the local validation set. args: parameters:...",
-      "community_name": ".evaluate",
+      "community_name": "FHIRFederatedClient",
       "id": "ai_client_src_ai_client_fl_client_rationale_960"
     },
     {
@@ -1224,7 +1359,7 @@
       "_origin": "ast",
       "community": 20,
       "norm_label": "reports client metadata to the server (optional).",
-      "community_name": ".evaluate",
+      "community_name": "FHIRFederatedClient",
       "id": "ai_client_src_ai_client_fl_client_rationale_1053"
     },
     {
@@ -1246,7 +1381,7 @@
       "_origin": "ast",
       "community": 8,
       "norm_label": "model_setup.py",
-      "community_name": "TrainingExample",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup"
     },
     {
@@ -1257,7 +1392,7 @@
       "_origin": "ast",
       "community": 8,
       "norm_label": "_log_vram()",
-      "community_name": "TrainingExample",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup_log_vram"
     },
     {
@@ -1268,7 +1403,7 @@
       "_origin": "ast",
       "community": 8,
       "norm_label": "quantizationconfig",
-      "community_name": "TrainingExample",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup_quantizationconfig"
     },
     {
@@ -1277,9 +1412,9 @@
       "source_file": "ai_client/src/ai_client/model_setup.py",
       "source_location": "L115",
       "_origin": "ast",
-      "community": 19,
+      "community": 8,
       "norm_label": "loraadapterconfig",
-      "community_name": "fl_client.py",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup_loraadapterconfig"
     },
     {
@@ -1288,9 +1423,9 @@
       "source_file": "ai_client/src/ai_client/model_setup.py",
       "source_location": "L126",
       "_origin": "ast",
-      "community": 8,
+      "community": 56,
       "norm_label": "trainingconfig",
-      "community_name": "TrainingExample",
+      "community_name": ".fit",
       "id": "ai_client_src_ai_client_model_setup_trainingconfig"
     },
     {
@@ -1301,7 +1436,7 @@
       "_origin": "ast",
       "community": 8,
       "norm_label": "build_bnb_config()",
-      "community_name": "TrainingExample",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup_build_bnb_config"
     },
     {
@@ -1323,7 +1458,7 @@
       "_origin": "ast",
       "community": 8,
       "norm_label": "load_quantized_model()",
-      "community_name": "TrainingExample",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup_load_quantized_model"
     },
     {
@@ -1334,7 +1469,7 @@
       "_origin": "ast",
       "community": 8,
       "norm_label": "pretrainedmodel",
-      "community_name": "TrainingExample",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup_py_pretrainedmodel"
     },
     {
@@ -1345,7 +1480,7 @@
       "_origin": "ast",
       "community": 8,
       "norm_label": "pretrainedtokenizerbase",
-      "community_name": "TrainingExample",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup_py_pretrainedtokenizerbase"
     },
     {
@@ -1354,9 +1489,9 @@
       "source_file": "ai_client/src/ai_client/model_setup.py",
       "source_location": "L233",
       "_origin": "ast",
-      "community": 17,
+      "community": 8,
       "norm_label": "apply_lora()",
-      "community_name": "centralized_baseline.py",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup_apply_lora"
     },
     {
@@ -1365,9 +1500,9 @@
       "source_file": "ai_client/src/ai_client/model_setup.py",
       "source_location": "L295",
       "_origin": "ast",
-      "community": 8,
+      "community": 58,
       "norm_label": "clinicalicd10dataset",
-      "community_name": "TrainingExample",
+      "community_name": "ClinicalICD10Dataset",
       "id": "ai_client_src_ai_client_model_setup_clinicalicd10dataset"
     },
     {
@@ -1376,9 +1511,9 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 8,
+      "community": 58,
       "norm_label": "dataset",
-      "community_name": "TrainingExample",
+      "community_name": "ClinicalICD10Dataset",
       "id": "ai_client_src_ai_client_model_setup_py_dataset"
     },
     {
@@ -1387,9 +1522,9 @@
       "source_file": "ai_client/src/ai_client/model_setup.py",
       "source_location": "L310",
       "_origin": "ast",
-      "community": 8,
+      "community": 58,
       "norm_label": ".__init__()",
-      "community_name": "TrainingExample",
+      "community_name": "ClinicalICD10Dataset",
       "id": "ai_client_src_ai_client_model_setup_clinicalicd10dataset_init"
     },
     {
@@ -1398,9 +1533,9 @@
       "source_file": "ai_client/src/ai_client/model_setup.py",
       "source_location": "L329",
       "_origin": "ast",
-      "community": 8,
+      "community": 58,
       "norm_label": "._tokenize()",
-      "community_name": "TrainingExample",
+      "community_name": "ClinicalICD10Dataset",
       "id": "ai_client_src_ai_client_model_setup_clinicalicd10dataset_tokenize"
     },
     {
@@ -1409,9 +1544,9 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 8,
+      "community": 58,
       "norm_label": "tensor",
-      "community_name": "TrainingExample",
+      "community_name": "ClinicalICD10Dataset",
       "id": "ai_client_src_ai_client_model_setup_py_tensor"
     },
     {
@@ -1420,9 +1555,9 @@
       "source_file": "ai_client/src/ai_client/model_setup.py",
       "source_location": "L371",
       "_origin": "ast",
-      "community": 8,
+      "community": 58,
       "norm_label": ".__len__()",
-      "community_name": "TrainingExample",
+      "community_name": "ClinicalICD10Dataset",
       "id": "ai_client_src_ai_client_model_setup_clinicalicd10dataset_len"
     },
     {
@@ -1431,9 +1566,9 @@
       "source_file": "ai_client/src/ai_client/model_setup.py",
       "source_location": "L374",
       "_origin": "ast",
-      "community": 8,
+      "community": 58,
       "norm_label": ".__getitem__()",
-      "community_name": "TrainingExample",
+      "community_name": "ClinicalICD10Dataset",
       "id": "ai_client_src_ai_client_model_setup_clinicalicd10dataset_getitem"
     },
     {
@@ -1444,7 +1579,7 @@
       "_origin": "ast",
       "community": 8,
       "norm_label": "build_dataset()",
-      "community_name": "TrainingExample",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup_build_dataset"
     },
     {
@@ -1455,7 +1590,7 @@
       "_origin": "ast",
       "community": 8,
       "norm_label": "train_one_round()",
-      "community_name": "TrainingExample",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup_train_one_round"
     },
     {
@@ -1466,7 +1601,7 @@
       "_origin": "ast",
       "community": 8,
       "norm_label": "ndarray",
-      "community_name": "TrainingExample",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup_py_ndarray"
     },
     {
@@ -1477,7 +1612,7 @@
       "_origin": "ast",
       "community": 8,
       "norm_label": "train_continuous()",
-      "community_name": "TrainingExample",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup_train_continuous"
     },
     {
@@ -1488,7 +1623,7 @@
       "_origin": "ast",
       "community": 8,
       "norm_label": "any",
-      "community_name": "TrainingExample",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup_py_any"
     },
     {
@@ -1499,7 +1634,7 @@
       "_origin": "ast",
       "community": 8,
       "norm_label": "get_lora_parameters()",
-      "community_name": "TrainingExample",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup_get_lora_parameters"
     },
     {
@@ -1510,7 +1645,7 @@
       "_origin": "ast",
       "community": 8,
       "norm_label": "set_lora_parameters()",
-      "community_name": "TrainingExample",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup_set_lora_parameters"
     },
     {
@@ -1521,7 +1656,7 @@
       "_origin": "ast",
       "community": 8,
       "norm_label": "model_setup.py -------------- configures an open-source llm (llama-3.2 by...",
-      "community_name": "TrainingExample",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup_rationale_1"
     },
     {
@@ -1532,7 +1667,7 @@
       "_origin": "ast",
       "community": 8,
       "norm_label": "logs pytorch allocated and reserved vram on cuda device 0.",
-      "community_name": "TrainingExample",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup_rationale_61"
     },
     {
@@ -1543,7 +1678,7 @@
       "_origin": "ast",
       "community": 8,
       "norm_label": "nf4 4-bit quantisation parameters via bitsandbytes. nf4 with double...",
-      "community_name": "TrainingExample",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup_rationale_102"
     },
     {
@@ -1552,9 +1687,9 @@
       "source_file": "ai_client/src/ai_client/model_setup.py",
       "source_location": "L116",
       "_origin": "ast",
-      "community": 19,
+      "community": 8,
       "norm_label": "lora adapter hyperparameters.",
-      "community_name": "fl_client.py",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup_rationale_116"
     },
     {
@@ -1563,9 +1698,9 @@
       "source_file": "ai_client/src/ai_client/model_setup.py",
       "source_location": "L127",
       "_origin": "ast",
-      "community": 8,
+      "community": 56,
       "norm_label": "federated training loop configuration.",
-      "community_name": "TrainingExample",
+      "community_name": ".fit",
       "id": "ai_client_src_ai_client_model_setup_rationale_127"
     },
     {
@@ -1576,7 +1711,7 @@
       "_origin": "ast",
       "community": 8,
       "norm_label": "builds the nf4 4-bit bitsandbytesconfig with double quantisation.",
-      "community_name": "TrainingExample",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup_rationale_150"
     },
     {
@@ -1587,7 +1722,7 @@
       "_origin": "ast",
       "community": 8,
       "norm_label": "loads model and tokeniser with precision controlled by model_base_precision. -...",
-      "community_name": "TrainingExample",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup_rationale_165"
     },
     {
@@ -1596,9 +1731,9 @@
       "source_file": "ai_client/src/ai_client/model_setup.py",
       "source_location": "L237",
       "_origin": "ast",
-      "community": 17,
+      "community": 8,
       "norm_label": "prepares the model for k-bit training and injects lora adapters. steps: 1....",
-      "community_name": "centralized_baseline.py",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup_rationale_237"
     },
     {
@@ -1607,9 +1742,9 @@
       "source_file": "ai_client/src/ai_client/model_setup.py",
       "source_location": "L296",
       "_origin": "ast",
-      "community": 8,
+      "community": 58,
       "norm_label": "pytorch dataset for icd-10 extraction fine-tuning. each example is formatted as...",
-      "community_name": "TrainingExample",
+      "community_name": "ClinicalICD10Dataset",
       "id": "ai_client_src_ai_client_model_setup_rationale_296"
     },
     {
@@ -1620,7 +1755,7 @@
       "_origin": "ast",
       "community": 8,
       "norm_label": "builds the clinicalicd10dataset from fhir_consumer examples.",
-      "community_name": "TrainingExample",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup_rationale_383"
     },
     {
@@ -1631,7 +1766,7 @@
       "_origin": "ast",
       "community": 8,
       "norm_label": "executes one federated training round on local fhir examples. returns only the...",
-      "community_name": "TrainingExample",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup_rationale_396"
     },
     {
@@ -1642,7 +1777,7 @@
       "_origin": "ast",
       "community": 8,
       "norm_label": "trains for num_epochs without resetting the optimizer between epochs. unlike...",
-      "community_name": "TrainingExample",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup_rationale_753"
     },
     {
@@ -1653,7 +1788,7 @@
       "_origin": "ast",
       "community": 8,
       "norm_label": "extracts only the lora adapter weights as a list of numpy arrays. this is the...",
-      "community_name": "TrainingExample",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup_rationale_877"
     },
     {
@@ -1664,7 +1799,7 @@
       "_origin": "ast",
       "community": 8,
       "norm_label": "applies aggregated lora weights (received from the flower server) to the local...",
-      "community_name": "TrainingExample",
+      "community_name": "model_setup.py",
       "id": "ai_client_src_ai_client_model_setup_rationale_892"
     },
     {
@@ -1684,9 +1819,9 @@
       "source_file": "ai_client/src/ai_client/model_setup_bert.py",
       "source_location": "L60",
       "_origin": "ast",
-      "community": 19,
+      "community": 7,
       "norm_label": "bertloraconfig",
-      "community_name": "fl_client.py",
+      "community_name": ".fit",
       "id": "ai_client_src_ai_client_model_setup_bert_bertloraconfig"
     },
     {
@@ -1761,9 +1896,9 @@
       "source_file": "ai_client/src/ai_client/model_setup_bert.py",
       "source_location": "L153",
       "_origin": "ast",
-      "community": 19,
+      "community": 7,
       "norm_label": "load_bert_model()",
-      "community_name": "fl_client.py",
+      "community_name": ".fit",
       "id": "ai_client_src_ai_client_model_setup_bert_load_bert_model"
     },
     {
@@ -1772,9 +1907,9 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 19,
+      "community": 7,
       "norm_label": "pretrainedtokenizerbase",
-      "community_name": "fl_client.py",
+      "community_name": ".fit",
       "id": "ai_client_src_ai_client_model_setup_bert_py_pretrainedtokenizerbase"
     },
     {
@@ -1926,9 +2061,9 @@
       "source_file": "ai_client/src/ai_client/model_setup_bert.py",
       "source_location": "L158",
       "_origin": "ast",
-      "community": 19,
+      "community": 7,
       "norm_label": "loads pubmedbert, applies lora (r=8), and builds the plmicdmodel. args:...",
-      "community_name": "fl_client.py",
+      "community_name": ".fit",
       "id": "ai_client_src_ai_client_model_setup_bert_rationale_158"
     },
     {
@@ -1994,7 +2129,7 @@
       "_origin": "ast",
       "community": 30,
       "norm_label": "turbocompress.py",
-      "community_name": "decompress_parameters",
+      "community_name": "turbocompress",
       "id": "ai_client_src_ai_client_turbocompress"
     },
     {
@@ -2005,7 +2140,7 @@
       "_origin": "ast",
       "community": 30,
       "norm_label": "_seeded_rotation()",
-      "community_name": "decompress_parameters",
+      "community_name": "turbocompress",
       "id": "ai_client_src_ai_client_turbocompress_seeded_rotation"
     },
     {
@@ -2016,7 +2151,7 @@
       "_origin": "ast",
       "community": 30,
       "norm_label": "device",
-      "community_name": "decompress_parameters",
+      "community_name": "turbocompress",
       "id": "ai_client_src_ai_client_turbocompress_py_device"
     },
     {
@@ -2027,7 +2162,7 @@
       "_origin": "ast",
       "community": 30,
       "norm_label": "tensor",
-      "community_name": "decompress_parameters",
+      "community_name": "turbocompress",
       "id": "ai_client_src_ai_client_turbocompress_py_tensor"
     },
     {
@@ -2038,7 +2173,7 @@
       "_origin": "ast",
       "community": 30,
       "norm_label": "turbocompress()",
-      "community_name": "decompress_parameters",
+      "community_name": "turbocompress",
       "id": "ai_client_src_ai_client_turbocompress_turbocompress"
     },
     {
@@ -2049,7 +2184,7 @@
       "_origin": "ast",
       "community": 30,
       "norm_label": "any",
-      "community_name": "decompress_parameters",
+      "community_name": "turbocompress",
       "id": "ai_client_src_ai_client_turbocompress_py_any"
     },
     {
@@ -2060,7 +2195,7 @@
       "_origin": "ast",
       "community": 30,
       "norm_label": "turbodecompress()",
-      "community_name": "decompress_parameters",
+      "community_name": "turbocompress",
       "id": "ai_client_src_ai_client_turbocompress_turbodecompress"
     },
     {
@@ -2069,7 +2204,7 @@
       "source_file": "ai_client/src/ai_client/turbocompress.py",
       "source_location": "L171",
       "_origin": "ast",
-      "community": 7,
+      "community": 56,
       "norm_label": "compress_parameters()",
       "community_name": ".fit",
       "id": "ai_client_src_ai_client_turbocompress_compress_parameters"
@@ -2080,9 +2215,9 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 30,
+      "community": 56,
       "norm_label": "ndarray",
-      "community_name": "decompress_parameters",
+      "community_name": ".fit",
       "id": "ai_client_src_ai_client_turbocompress_py_ndarray"
     },
     {
@@ -2091,9 +2226,9 @@
       "source_file": "ai_client/src/ai_client/turbocompress.py",
       "source_location": "L204",
       "_origin": "ast",
-      "community": 30,
+      "community": 56,
       "norm_label": "decompress_parameters()",
-      "community_name": "decompress_parameters",
+      "community_name": ".fit",
       "id": "ai_client_src_ai_client_turbocompress_decompress_parameters"
     },
     {
@@ -2104,7 +2239,7 @@
       "_origin": "ast",
       "community": 30,
       "norm_label": "turbocompress.py ---------------- two-stage turboquant compression for lora...",
-      "community_name": "decompress_parameters",
+      "community_name": "turbocompress",
       "id": "ai_client_src_ai_client_turbocompress_rationale_1"
     },
     {
@@ -2115,7 +2250,7 @@
       "_origin": "ast",
       "community": 30,
       "norm_label": "random orthogonal rotation matrix r \u2208 r^{d\u00d7d}, seeded for reproducibility. uses...",
-      "community_name": "decompress_parameters",
+      "community_name": "turbocompress",
       "id": "ai_client_src_ai_client_turbocompress_rationale_51"
     },
     {
@@ -2126,7 +2261,7 @@
       "_origin": "ast",
       "community": 30,
       "norm_label": "compress a lora delta tensor using two-stage turboquant. stage 1 \u2014 rotated...",
-      "community_name": "decompress_parameters",
+      "community_name": "turbocompress",
       "id": "ai_client_src_ai_client_turbocompress_rationale_63"
     },
     {
@@ -2137,7 +2272,7 @@
       "_origin": "ast",
       "community": 30,
       "norm_label": "reconstruct a tensor from its turboquant compressed representation. inverts...",
-      "community_name": "decompress_parameters",
+      "community_name": "turbocompress",
       "id": "ai_client_src_ai_client_turbocompress_rationale_139"
     },
     {
@@ -2146,7 +2281,7 @@
       "source_file": "ai_client/src/ai_client/turbocompress.py",
       "source_location": "L172",
       "_origin": "ast",
-      "community": 7,
+      "community": 56,
       "norm_label": "compress a list of lora parameter arrays for flower ndarray transport. each...",
       "community_name": ".fit",
       "id": "ai_client_src_ai_client_turbocompress_rationale_172"
@@ -2157,9 +2292,9 @@
       "source_file": "ai_client/src/ai_client/turbocompress.py",
       "source_location": "L205",
       "_origin": "ast",
-      "community": 30,
+      "community": 56,
       "norm_label": "decompress a list of uint8 blobs back to lora parameter arrays. args: blobs:...",
-      "community_name": "decompress_parameters",
+      "community_name": ".fit",
       "id": "ai_client_src_ai_client_turbocompress_rationale_205"
     },
     {
@@ -7754,7 +7889,7 @@
       "source_file": "experiments/adaptive-clipping/src/adaptive_clipping/client.py",
       "source_location": "L101",
       "_origin": "ast",
-      "community": 7,
+      "community": 56,
       "norm_label": ".fit()",
       "community_name": ".fit",
       "id": "experiments_adaptive_clipping_src_adaptive_clipping_client_adaptiveclippingclient_fit"
@@ -7765,7 +7900,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 7,
+      "community": 56,
       "norm_label": "ndarrays",
       "community_name": ".fit",
       "id": "experiments_adaptive_clipping_src_adaptive_clipping_client_py_ndarrays"
@@ -7776,7 +7911,7 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 7,
+      "community": 56,
       "norm_label": "scalar",
       "community_name": ".fit",
       "id": "experiments_adaptive_clipping_src_adaptive_clipping_client_py_scalar"
@@ -8216,9 +8351,9 @@
       "source_file": "experiments/adaptive-clipping/src/adaptive_clipping/training.py",
       "source_location": "L119",
       "_origin": "ast",
-      "community": 56,
+      "community": 1,
       "norm_label": "adaptive_train_bert_one_round()",
-      "community_name": "adaptive_train_bert_one_round",
+      "community_name": "PerLayerClipper",
       "id": "experiments_adaptive_clipping_src_adaptive_clipping_training_adaptive_train_bert_one_round"
     },
     {
@@ -8227,9 +8362,9 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 56,
+      "community": 1,
       "norm_label": "pretrainedtokenizerbase",
-      "community_name": "adaptive_train_bert_one_round",
+      "community_name": "PerLayerClipper",
       "id": "experiments_adaptive_clipping_src_adaptive_clipping_training_py_pretrainedtokenizerbase"
     },
     {
@@ -8238,9 +8373,9 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 56,
+      "community": 1,
       "norm_label": "any",
-      "community_name": "adaptive_train_bert_one_round",
+      "community_name": "PerLayerClipper",
       "id": "experiments_adaptive_clipping_src_adaptive_clipping_training_py_any"
     },
     {
@@ -8249,9 +8384,9 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 56,
+      "community": 1,
       "norm_label": "ndarray",
-      "community_name": "adaptive_train_bert_one_round",
+      "community_name": "PerLayerClipper",
       "id": "experiments_adaptive_clipping_src_adaptive_clipping_training_py_ndarray"
     },
     {
@@ -8262,7 +8397,7 @@
       "_origin": "ast",
       "community": 56,
       "norm_label": "adaptive_train_one_round()",
-      "community_name": "adaptive_train_bert_one_round",
+      "community_name": ".fit",
       "id": "experiments_adaptive_clipping_src_adaptive_clipping_training_adaptive_train_one_round"
     },
     {
@@ -8273,7 +8408,7 @@
       "_origin": "ast",
       "community": 56,
       "norm_label": "pretrainedmodel",
-      "community_name": "adaptive_train_bert_one_round",
+      "community_name": ".fit",
       "id": "experiments_adaptive_clipping_src_adaptive_clipping_training_py_pretrainedmodel"
     },
     {
@@ -8304,9 +8439,9 @@
       "source_file": "experiments/adaptive-clipping/src/adaptive_clipping/training.py",
       "source_location": "L129",
       "_origin": "ast",
-      "community": 56,
+      "community": 1,
       "norm_label": "per-layer-clipping variant of ai_client.model_setup_bert.train_bert_one_round....",
-      "community_name": "adaptive_train_bert_one_round",
+      "community_name": "PerLayerClipper",
       "id": "experiments_adaptive_clipping_src_adaptive_clipping_training_rationale_129"
     },
     {
@@ -9844,9 +9979,9 @@
       "source_file": "experiments/article3/src/article3/client.py",
       "source_location": "L70",
       "_origin": "ast",
-      "community": 2,
+      "community": 7,
       "norm_label": "dualloraclient",
-      "community_name": "article3/client.py",
+      "community_name": ".fit",
       "id": "experiments_article3_src_article3_client_dualloraclient"
     },
     {
@@ -9954,9 +10089,9 @@
       "source_file": "experiments/article3/src/article3/client.py",
       "source_location": "L71",
       "_origin": "ast",
-      "community": 2,
+      "community": 7,
       "norm_label": "fhirfederatedclient with herald-pfl dual-adapter training/evaluation. bert-only.",
-      "community_name": "article3/client.py",
+      "community_name": ".fit",
       "id": "experiments_article3_src_article3_client_rationale_71"
     },
     {
@@ -10130,9 +10265,9 @@
       "source_file": "",
       "source_location": "",
       "_origin": "ast",
-      "community": 20,
+      "community": 56,
       "norm_label": "dataloader",
-      "community_name": ".evaluate",
+      "community_name": ".fit",
       "id": "dataloader"
     },
     {
@@ -11654,6 +11789,83 @@
     }
   ],
   "links": [
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": ".githooks/post-checkout",
+      "source_location": "L1",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "githooks_post_checkout",
+      "target": "githooks_post_checkout__entry",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": ".githooks/post-checkout",
+      "source_location": "L133",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "githooks_post_checkout",
+      "target": "githooks_post_checkout_graphify_rebuild_log",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": ".githooks/post-checkout",
+      "source_location": "L9",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "githooks_post_checkout",
+      "target": "githooks_post_checkout_pythonhashseed",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": ".githooks/post-commit",
+      "source_location": "L1",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "githooks_post_commit",
+      "target": "githooks_post_commit__entry",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": ".githooks/post-commit",
+      "source_location": "L127",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "githooks_post_commit",
+      "target": "githooks_post_commit_graphify_changed",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": ".githooks/post-commit",
+      "source_location": "L135",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "githooks_post_commit",
+      "target": "githooks_post_commit_graphify_rebuild_log",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": ".githooks/post-commit",
+      "source_location": "L9",
+      "weight": 1.0,
+      "_origin": "ast",
+      "source": "githooks_post_commit",
+      "target": "githooks_post_commit_pythonhashseed",
+      "confidence_score": 1.0
+    },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
@@ -30235,5 +30447,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "ccb6f932e6a4efa50ed112d9d763930f2e16bab2"
+  "built_at_commit": "ed57a706c45f4a174315242dc41917f86e235ebc"
 }
