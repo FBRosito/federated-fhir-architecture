@@ -2,6 +2,8 @@
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
 
+**Always prioritize graphify over raw grep/Read/Glob for any codebase-understanding task in this session** (locating code, tracing relationships, architecture review, onboarding). Reach for raw file search only after graphify has oriented you, or when editing/debugging specific lines it already pointed you to.
+
 Rules:
 - For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
