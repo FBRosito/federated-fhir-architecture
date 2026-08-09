@@ -101,10 +101,21 @@ tensorboard/
 wandb/
 mlflow/
 
-# experiment_logs: ignora logs de texto mas mantém JSONs de resultados no repo
+# experiment_logs: JSONs/figuras diretos de experiment_logs/ são resultados
+# pré-publicação (baseline/figuras do Artigo 2) — não versionar. Subpastas
+# como archive_smoke_*/ (smoke tests, já rastreados) não são afetadas por
+# estes padrões, que não cruzam diretórios.
 experiment_logs/*.log
 experiment_logs/*.pid
 experiment_logs/*.lock
+experiment_logs/*.json
+experiment_logs/figures/
+
+# experiments/*/logs and experiments/logs: per-run sweep output (F1, epsilon,
+# checkpoints) for unpublished articles — never auto-committed, unlike
+# experiment_logs/ above which holds already-published baseline results.
+experiments/*/logs/
+experiments/logs/
 
 # =============================================================================
 # Jupyter
@@ -139,9 +150,31 @@ Dockerfile.tmp.*
 # =============================================================================
 experiment_logs.tar.gz
 
+# Vast.ai experimental results mirror — may contain unpublished results
+experiment_results_vastai/
+
 # Graphify knowledge graph output
 graphify-out/
 
 # Unpublished paper analysis — internal only, do not commit
 docs/per_layer_epsilon_impact.md
+docs/fase1_resultados.md
+docs/artigo2_errata_ci.md
 docs/nist_sp800_226_note.md
+docs/article3_dual_lora_seeds.md
+docs/fase3_m0_resultados.md
+docs/fase3_m0_1_resultados.md
+docs/fase3_m0_2_resultados.md
+# PATE experiments (Fase 3) — internal only; MANIFEST_M0.md is public by design
+experiments/herald-pate/**
+!experiments/herald-pate/MANIFEST_M0.md
+
+# Client-level DP experiments (Fase 1) — internal results
+experiments/client-level-dp/
+
+# AI tool configuration/state directories
+.codex/
+
+papers/artigo2/
+papers/artigo3/
+papers/eramia2026/
