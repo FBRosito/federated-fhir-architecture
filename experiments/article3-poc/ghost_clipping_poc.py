@@ -2,12 +2,13 @@
 POC: Ghost Clipping compatibility with PubMedBERT+LoRA in HERALD environment.
 Tests whether Opacus ghost clipping mode works with LoRA-wrapped BERT models.
 """
-import torch
+
 import warnings
+
 warnings.filterwarnings("ignore")
 
 
-def test_ghost_clipping_with_lora():
+def test_ghost_clipping_with_lora() -> None:
     """Test Ghost Clipping with a tiny BERT+LoRA model (no download required)."""
     print("=" * 60)
     print("POC: Ghost Clipping + LoRA compatibility test")
@@ -15,8 +16,8 @@ def test_ghost_clipping_with_lora():
 
     # Step 1: Load a tiny BERT model (bert-tiny is ~17MB, already cached or fast to download)
     print("\n[1] Loading tiny BERT model...")
+    from peft import LoraConfig, TaskType, get_peft_model
     from transformers import AutoModelForSequenceClassification, AutoTokenizer
-    from peft import LoraConfig, get_peft_model, TaskType
 
     model_name = "prajjwal1/bert-tiny"
     try:
@@ -25,8 +26,10 @@ def test_ghost_clipping_with_lora():
             num_labels=50,
             ignore_mismatched_sizes=True,
         )
-        tokenizer = AutoTokenizer.from_pretrained(model_name)
-        print(f"  Model loaded: {sum(p.numel() for p in model.parameters()):,} total params")
+        AutoTokenizer.from_pretrained(model_name)
+        print(
+            f"  Model loaded: {sum(p.numel() for p in model.parameters()):,} total params"
+        )
     except Exception as e:
         print(f"  FAIL: {e}")
         return False
@@ -45,7 +48,9 @@ def test_ghost_clipping_with_lora():
         model = get_peft_model(model, lora_config)
         trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
         total = sum(p.numel() for p in model.parameters())
-        print(f"  Trainable params: {trainable:,} / {total:,} ({100*trainable/total:.2f}%)")
+        print(
+            f"  Trainable params: {trainable:,} / {total:,} ({100*trainable/total:.2f}%)"
+        )
     except Exception as e:
         print(f"  FAIL: {e}")
         return False
@@ -67,6 +72,7 @@ def test_ghost_clipping_with_lora():
     # Step 4: Setup optimizer
     print("\n[4] Setting up optimizer...")
     from torch.optim import AdamW
+
     optimizer = AdamW(
         [p for p in model.parameters() if p.requires_grad],
         lr=2e-4,
@@ -80,13 +86,15 @@ def test_ghost_clipping_with_lora():
 
     # Try ghost mode first
     try:
-        model_private, optimizer_private, dataloader_private = privacy_engine.make_private(
-            module=model,
-            optimizer=optimizer,
-            data_loader=dataloader,
-            noise_multiplier=1.0,
-            max_grad_norm=1.0,
-            grad_sample_mode="ghost",  # Ghost Clipping
+        model_private, optimizer_private, dataloader_private = (
+            privacy_engine.make_private(
+                module=model,
+                optimizer=optimizer,
+                data_loader=dataloader,
+                noise_multiplier=1.0,
+                max_grad_norm=1.0,
+                grad_sample_mode="ghost",  # Ghost Clipping
+            )
         )
         print("  Ghost Clipping mode: SUCCESS")
         ghost_available = True
@@ -95,12 +103,14 @@ def test_ghost_clipping_with_lora():
         print("  Trying standard mode as fallback...")
         ghost_available = False
         try:
-            model_private, optimizer_private, dataloader_private = privacy_engine.make_private(
-                module=model,
-                optimizer=optimizer,
-                data_loader=dataloader,
-                noise_multiplier=1.0,
-                max_grad_norm=1.0,
+            model_private, optimizer_private, dataloader_private = (
+                privacy_engine.make_private(
+                    module=model,
+                    optimizer=optimizer,
+                    data_loader=dataloader,
+                    noise_multiplier=1.0,
+                    max_grad_norm=1.0,
+                )
             )
             print("  Standard mode: SUCCESS")
         except Exception as e2:
@@ -130,10 +140,11 @@ def test_ghost_clipping_with_lora():
         epsilon = privacy_engine.get_epsilon(delta=1e-5)
         print(f"  Loss: {loss.item():.4f}")
         print(f"  Epsilon after 1 step: {epsilon:.6f}")
-        print(f"  Step SUCCESS")
+        print("  Step SUCCESS")
     except Exception as e:
         print(f"  Training step FAIL: {type(e).__name__}: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -147,19 +158,19 @@ def test_ghost_clipping_with_lora():
             model_name, num_labels=50, ignore_mismatched_sizes=True
         )
         model2 = get_peft_model(model2, lora_config)
-        optimizer2 = AdamW(
-            [p for p in model2.parameters() if p.requires_grad], lr=2e-4
-        )
+        optimizer2 = AdamW([p for p in model2.parameters() if p.requires_grad], lr=2e-4)
         privacy_engine2 = PrivacyEngine()
         mode = "ghost" if ghost_available else None
         kwargs = {"grad_sample_mode": mode} if mode else {}
-        model2_private, optimizer2_private, dataloader2_private = privacy_engine2.make_private(
-            module=model2,
-            optimizer=optimizer2,
-            data_loader=DataLoader(dataset, batch_size=8, shuffle=True),
-            noise_multiplier=1.0,
-            max_grad_norm=1.0,
-            **kwargs,
+        model2_private, optimizer2_private, dataloader2_private = (
+            privacy_engine2.make_private(
+                module=model2,
+                optimizer=optimizer2,
+                data_loader=DataLoader(dataset, batch_size=8, shuffle=True),
+                noise_multiplier=1.0,
+                max_grad_norm=1.0,
+                **kwargs,
+            )
         )
         model2_private = model2_private.to(device)
         batch2 = next(iter(dataloader2_private))
@@ -177,6 +188,7 @@ def test_ghost_clipping_with_lora():
     except Exception as e:
         print(f"  Model reload FAIL: {type(e).__name__}: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
@@ -184,10 +196,14 @@ def test_ghost_clipping_with_lora():
     print("\n" + "=" * 60)
     print("SUMMARY")
     print("=" * 60)
-    print(f"  Ghost Clipping available: {'YES' if ghost_available else 'NO (fell back to standard)'}")
-    print(f"  LoRA + Opacus: COMPATIBLE")
-    print(f"  Model reload pattern: COMPATIBLE")
-    print(f"  Ready for Artigo 3 experiments: {'YES' if ghost_available else 'PARTIALLY (without ghost)'}")
+    print(
+        f"  Ghost Clipping available: {'YES' if ghost_available else 'NO (fell back to standard)'}"
+    )
+    print("  LoRA + Opacus: COMPATIBLE")
+    print("  Model reload pattern: COMPATIBLE")
+    print(
+        f"  Ready for Artigo 3 experiments: {'YES' if ghost_available else 'PARTIALLY (without ghost)'}"
+    )
     return ghost_available
 
 

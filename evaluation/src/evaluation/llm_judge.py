@@ -38,8 +38,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 
-import numpy as np
 import httpx
+import numpy as np
 
 log = logging.getLogger(__name__)
 
@@ -47,19 +47,19 @@ log = logging.getLogger(__name__)
 
 JUDGES: list[dict[str, str]] = [
     {
-        "name":     "qwen2.5-72b",
+        "name": "qwen2.5-72b",
         "model_id": "qwen/qwen-2.5-72b-instruct",
-        "family":   "Qwen (Alibaba)",
+        "family": "Qwen (Alibaba)",
     },
     {
-        "name":     "gemma-3-27b",
+        "name": "gemma-3-27b",
         "model_id": "google/gemma-3-27b-it",
-        "family":   "Gemma (Google)",
+        "family": "Gemma (Google)",
     },
     {
-        "name":     "deepseek-v3.1",
+        "name": "deepseek-v3.1",
         "model_id": "deepseek/deepseek-chat-v3.1",
-        "family":   "DeepSeek AI",
+        "family": "DeepSeek AI",
     },
 ]
 
@@ -90,54 +90,72 @@ Respond ONLY with a valid JSON object, no explanations outside the JSON:
 
 # ── Data types ─────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class JudgeScore:
     """Scores from a single judge for one example."""
-    judge_name:         str
-    clinical_accuracy:  float
-    completeness:       float
-    coherence:          float
+
+    judge_name: str
+    clinical_accuracy: float
+    completeness: float
+    coherence: float
     hallucination_free: float
-    clinical_utility:   float
-    reasoning:          str = ""
-    error:              str = ""
+    clinical_utility: float
+    reasoning: str = ""
+    error: str = ""
 
     @property
     def mean_score(self) -> float:
-        return np.mean([
-            self.clinical_accuracy, self.completeness, self.coherence,
-            self.hallucination_free, self.clinical_utility,
-        ])
+        """Mean of the five evaluation dimensions."""
+        return np.mean(
+            [
+                self.clinical_accuracy,
+                self.completeness,
+                self.coherence,
+                self.hallucination_free,
+                self.clinical_utility,
+            ]
+        )
 
     def to_dict(self) -> dict:
+        """Serialize the judge's scores to a plain dict (JSON-ready)."""
         return {
-            "judge":              self.judge_name,
-            "clinical_accuracy":  self.clinical_accuracy,
-            "completeness":       self.completeness,
-            "coherence":          self.coherence,
+            "judge": self.judge_name,
+            "clinical_accuracy": self.clinical_accuracy,
+            "completeness": self.completeness,
+            "coherence": self.coherence,
             "hallucination_free": self.hallucination_free,
-            "clinical_utility":   self.clinical_utility,
-            "mean":               round(self.mean_score, 4),
-            "reasoning":          self.reasoning,
-            "error":              self.error,
+            "clinical_utility": self.clinical_utility,
+            "mean": round(self.mean_score, 4),
+            "reasoning": self.reasoning,
+            "error": self.error,
         }
 
 
 @dataclass
 class EnsembleScore:
     """Ensemble scores (average of 3 judges) for one example."""
-    scores_per_judge:    list[JudgeScore] = field(default_factory=list)
-    spearman_rho:        dict[str, float] = field(default_factory=dict)
-    krippendorff_alpha:  dict[str, float] = field(default_factory=dict)
+
+    scores_per_judge: list[JudgeScore] = field(default_factory=list)
+    spearman_rho: dict[str, float] = field(default_factory=dict)
+    krippendorff_alpha: dict[str, float] = field(default_factory=dict)
 
     @property
     def ensemble_mean(self) -> float:
+        """Mean of per-judge mean scores, excluding failed judges (NaN if none)."""
         valid = [s.mean_score for s in self.scores_per_judge if not s.error]
         return float(np.mean(valid)) if valid else float("nan")
 
     @property
     def per_dimension_mean(self) -> dict[str, float]:
-        dims = ["clinical_accuracy", "completeness", "coherence", "hallucination_free", "clinical_utility"]
+        """Per-dimension mean across judges, excluding failed judges."""
+        dims = [
+            "clinical_accuracy",
+            "completeness",
+            "coherence",
+            "hallucination_free",
+            "clinical_utility",
+        ]
         result = {}
         for dim in dims:
             vals = [getattr(s, dim) for s in self.scores_per_judge if not s.error]
@@ -145,17 +163,21 @@ class EnsembleScore:
         return result
 
     def to_dict(self) -> dict:
+        """Serialize the ensemble scores to a plain dict (JSON-ready)."""
         d = {
-            "ensemble_mean":      round(self.ensemble_mean, 4),
-            "per_judge":          [s.to_dict() for s in self.scores_per_judge],
-            "spearman_rho":       {k: round(v, 4) for k, v in self.spearman_rho.items()},
-            "krippendorff_alpha": {k: round(v, 4) for k, v in self.krippendorff_alpha.items()},
+            "ensemble_mean": round(self.ensemble_mean, 4),
+            "per_judge": [s.to_dict() for s in self.scores_per_judge],
+            "spearman_rho": {k: round(v, 4) for k, v in self.spearman_rho.items()},
+            "krippendorff_alpha": {
+                k: round(v, 4) for k, v in self.krippendorff_alpha.items()
+            },
         }
         d.update({f"dim_{k}": round(v, 4) for k, v in self.per_dimension_mean.items()})
         return d
 
 
 # ── API call ───────────────────────────────────────────────────────────────────
+
 
 def _call_judge(
     judge: dict[str, str],
@@ -167,13 +189,13 @@ def _call_judge(
 ) -> JudgeScore:
     """Calls a single judge via the OpenRouter API and parses the JSON response."""
     prompt = JUDGE_PROMPT_TEMPLATE.format(
-        reference  = reference[:2000],   # truncate to stay within context
-        prediction = prediction[:2000],
+        reference=reference[:2000],  # truncate to stay within context
+        prediction=prediction[:2000],
     )
     headers = {
         "Authorization": f"Bearer {api_key}",
-        "HTTP-Referer":  "https://github.com/federated-fhir-architecture",
-        "Content-Type":  "application/json",
+        "HTTP-Referer": "https://github.com/federated-fhir-architecture",
+        "Content-Type": "application/json",
     }
     payload = {
         "model": judge["model_id"],
@@ -197,36 +219,44 @@ def _call_judge(
 
             scores_raw = json.loads(content)
             return JudgeScore(
-                judge_name         = judge["name"],
-                clinical_accuracy  = float(scores_raw.get("clinical_accuracy", 3)),
-                completeness       = float(scores_raw.get("completeness", 3)),
-                coherence          = float(scores_raw.get("coherence", 3)),
-                hallucination_free = float(scores_raw.get("hallucination_free", 3)),
-                clinical_utility   = float(scores_raw.get("clinical_utility", 3)),
-                reasoning          = str(scores_raw.get("reasoning", "")),
+                judge_name=judge["name"],
+                clinical_accuracy=float(scores_raw.get("clinical_accuracy", 3)),
+                completeness=float(scores_raw.get("completeness", 3)),
+                coherence=float(scores_raw.get("coherence", 3)),
+                hallucination_free=float(scores_raw.get("hallucination_free", 3)),
+                clinical_utility=float(scores_raw.get("clinical_utility", 3)),
+                reasoning=str(scores_raw.get("reasoning", "")),
             )
         except Exception as exc:
             last_error = str(exc)
-            log.warning("Judge %s attempt %d/%d failed: %s", judge["name"], attempt + 1, max_retries, exc)
+            log.warning(
+                "Judge %s attempt %d/%d failed: %s",
+                judge["name"],
+                attempt + 1,
+                max_retries,
+                exc,
+            )
             time.sleep(retry_delay * (attempt + 1))
 
     return JudgeScore(
-        judge_name         = judge["name"],
-        clinical_accuracy  = float("nan"),
-        completeness       = float("nan"),
-        coherence          = float("nan"),
-        hallucination_free = float("nan"),
-        clinical_utility   = float("nan"),
-        error              = last_error,
+        judge_name=judge["name"],
+        clinical_accuracy=float("nan"),
+        completeness=float("nan"),
+        coherence=float("nan"),
+        hallucination_free=float("nan"),
+        clinical_utility=float("nan"),
+        error=last_error,
     )
 
 
 # ── Spearman ρ ─────────────────────────────────────────────────────────────────
 
+
 def _spearman_rho(x: list[float], y: list[float]) -> float:
     """Computes the Spearman rank correlation coefficient between two vectors."""
     try:
         from scipy.stats import spearmanr
+
         rho, _ = spearmanr(x, y)
         return float(rho)
     except ImportError:
@@ -241,6 +271,7 @@ def _spearman_rho(x: list[float], y: list[float]) -> float:
 
 
 # ── Krippendorff's α (ordinal) ─────────────────────────────────────────────────
+
 
 def _krippendorff_alpha_ordinal(ratings: list[list[float]]) -> float:
     """Computes Krippendorff's α with ordinal metric for 1-5 Likert ratings.
@@ -258,7 +289,7 @@ def _krippendorff_alpha_ordinal(ratings: list[list[float]]) -> float:
       D_e = expected disagreement: d²(c,k) over all rating pairs regardless of item.
       Ordinal metric: d²(c,k) = (c - k)²
     """
-    arr = np.array(ratings, dtype=float)           # (n_judges, n_samples)
+    arr = np.array(ratings, dtype=float)  # (n_judges, n_samples)
     n_judges, n_items = arr.shape
 
     if n_judges < 2:
@@ -299,13 +330,14 @@ def _krippendorff_alpha_ordinal(ratings: list[list[float]]) -> float:
             de_count += 1
 
     if de_count == 0 or d_e_sum == 0.0:
-        return 1.0   # all ratings identical → perfect agreement
+        return 1.0  # all ratings identical → perfect agreement
 
     D_e = d_e_sum / de_count
     return float(1.0 - D_o / D_e)
 
 
 # ── Main interface ─────────────────────────────────────────────────────────────
+
 
 def evaluate_with_llm_judges(
     predictions: list[str],
@@ -340,17 +372,32 @@ def evaluate_with_llm_judges(
     active_judges = judge_models or JUDGES
     n = min(len(predictions), len(references), max_samples)
     if n < len(predictions):
-        log.info("LLM-as-judge: limited to %d/%d samples (max_samples=%d).", n, len(predictions), max_samples)
+        log.info(
+            "LLM-as-judge: limited to %d/%d samples (max_samples=%d).",
+            n,
+            len(predictions),
+            max_samples,
+        )
 
     workers = max_workers or int(os.getenv("JUDGE_MAX_WORKERS", "3"))
     ensemble_scores: list[EnsembleScore] = []
-    dims = ["clinical_accuracy", "completeness", "coherence", "hallucination_free", "clinical_utility"]
+    dims = [
+        "clinical_accuracy",
+        "completeness",
+        "coherence",
+        "hallucination_free",
+        "clinical_utility",
+    ]
 
-    log.info("Starting LLM-as-judge evaluation: %d samples × %d judges...", n, len(active_judges))
+    log.info(
+        "Starting LLM-as-judge evaluation: %d samples × %d judges...",
+        n,
+        len(active_judges),
+    )
 
     for i in range(n):
         pred = predictions[i]
-        ref  = references[i]
+        ref = references[i]
         judge_scores: list[JudgeScore] = []
 
         with ThreadPoolExecutor(max_workers=workers) as executor:
@@ -371,34 +418,41 @@ def evaluate_with_llm_judges(
                     s1, s2 = valid_scores[j1], valid_scores[j2]
                     x = [getattr(s1, d) for d in dims]
                     y = [getattr(s2, d) for d in dims]
-                    spearman[f"{s1.judge_name}_vs_{s2.judge_name}"] = _spearman_rho(x, y)
+                    spearman[f"{s1.judge_name}_vs_{s2.judge_name}"] = _spearman_rho(
+                        x, y
+                    )
 
         # Krippendorff's α: ordinal reliability per dimension and overall
         krippendorff: dict[str, float] = {}
         if len(valid_scores) >= 2:
             for dim in dims:
-                ratings_dim = [[getattr(s, dim)] for s in valid_scores]
-                # Transpose: ratings[judge][sample] — here sample=1 per call, aggregate later
-                krippendorff[dim] = float("nan")   # computed globally in aggregate_judge_scores
+                # Per-dimension α is computed globally in aggregate_judge_scores
+                krippendorff[dim] = float("nan")
             # Overall α across all 5 dimensions (each treated as a separate item)
             ratings_all = [[getattr(s, d) for d in dims] for s in valid_scores]
             krippendorff["overall"] = _krippendorff_alpha_ordinal(ratings_all)
 
-        ensemble_scores.append(EnsembleScore(
-            scores_per_judge   = judge_scores,
-            spearman_rho       = spearman,
-            krippendorff_alpha = krippendorff,
-        ))
+        ensemble_scores.append(
+            EnsembleScore(
+                scores_per_judge=judge_scores,
+                spearman_rho=spearman,
+                krippendorff_alpha=krippendorff,
+            )
+        )
 
         if (i + 1) % 10 == 0:
             log.info("LLM-as-judge: %d/%d samples evaluated.", i + 1, n)
 
     # Summary log
-    all_means = [s.ensemble_mean for s in ensemble_scores if not np.isnan(s.ensemble_mean)]
+    all_means = [
+        s.ensemble_mean for s in ensemble_scores if not np.isnan(s.ensemble_mean)
+    ]
     if all_means:
         log.info(
             "LLM-as-judge completed: n=%d | ensemble_mean=%.3f ± %.3f",
-            len(all_means), float(np.mean(all_means)), float(np.std(all_means)),
+            len(all_means),
+            float(np.mean(all_means)),
+            float(np.std(all_means)),
         )
 
     all_pairs: dict[str, list[float]] = {}
@@ -427,20 +481,26 @@ def aggregate_judge_scores(scores: list[EnsembleScore]) -> dict[str, float]:
     if not scores:
         return {}
 
-    dims = ["clinical_accuracy", "completeness", "coherence", "hallucination_free", "clinical_utility"]
+    dims = [
+        "clinical_accuracy",
+        "completeness",
+        "coherence",
+        "hallucination_free",
+        "clinical_utility",
+    ]
     result: dict[str, float] = {}
 
     ensemble_means = [s.ensemble_mean for s in scores if not np.isnan(s.ensemble_mean)]
     if ensemble_means:
         result["ensemble_mean"] = round(float(np.mean(ensemble_means)), 4)
-        result["ensemble_std"]  = round(float(np.std(ensemble_means)), 4)
+        result["ensemble_std"] = round(float(np.std(ensemble_means)), 4)
 
     for dim in dims:
         vals = [s.per_dimension_mean.get(dim, float("nan")) for s in scores]
         vals = [v for v in vals if not np.isnan(v)]
         if vals:
             result[f"{dim}_mean"] = round(float(np.mean(vals)), 4)
-            result[f"{dim}_std"]  = round(float(np.std(vals)), 4)
+            result[f"{dim}_std"] = round(float(np.std(vals)), 4)
 
     # Global Spearman ρ — mean across all samples per judge pair
     all_rhos: dict[str, list[float]] = {}
@@ -453,14 +513,23 @@ def aggregate_judge_scores(scores: list[EnsembleScore]) -> dict[str, float]:
 
     # Global Krippendorff's α — computed across ALL samples for each dimension.
     # ratings[judge_idx][sample_idx] is more reliable than per-sample α.
-    judge_names = list({s.judge_name for es in scores for s in es.scores_per_judge if not s.error})
+    judge_names = list(
+        {s.judge_name for es in scores for s in es.scores_per_judge if not s.error}
+    )
     if len(judge_names) >= 2:
         for dim in dims:
             ratings_dim: list[list[float]] = []
             for jname in judge_names:
                 row = []
                 for es in scores:
-                    match = next((s for s in es.scores_per_judge if s.judge_name == jname and not s.error), None)
+                    match = next(
+                        (
+                            s
+                            for s in es.scores_per_judge
+                            if s.judge_name == jname and not s.error
+                        ),
+                        None,
+                    )
                     row.append(getattr(match, dim) if match else float("nan"))
                 ratings_dim.append(row)
             alpha = _krippendorff_alpha_ordinal(ratings_dim)
@@ -471,17 +540,28 @@ def aggregate_judge_scores(scores: list[EnsembleScore]) -> dict[str, float]:
         for jname in judge_names:
             row = []
             for es in scores:
-                match = next((s for s in es.scores_per_judge if s.judge_name == jname and not s.error), None)
+                match = next(
+                    (
+                        s
+                        for s in es.scores_per_judge
+                        if s.judge_name == jname and not s.error
+                    ),
+                    None,
+                )
                 if match:
                     row.extend([getattr(match, d) for d in dims])
                 else:
                     row.extend([float("nan")] * len(dims))
             ratings_all.append(row)
-        result["krippendorff_alpha_overall"] = round(_krippendorff_alpha_ordinal(ratings_all), 4)
+        result["krippendorff_alpha_overall"] = round(
+            _krippendorff_alpha_ordinal(ratings_all), 4
+        )
         log.info(
             "Krippendorff α overall=%.3f | %s",
             result["krippendorff_alpha_overall"],
-            " | ".join(f"{d[:8]}={result[f'krippendorff_alpha_{d}']:.3f}" for d in dims),
+            " | ".join(
+                f"{d[:8]}={result[f'krippendorff_alpha_{d}']:.3f}" for d in dims
+            ),
         )
 
     return result

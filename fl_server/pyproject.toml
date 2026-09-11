@@ -1,7 +1,7 @@
 [project]
 name = "fl-server"
 version = "0.1.0"
-description = "Add your description here"
+description = "Federated orchestration server — Flower-based FedProx with server-side DP clipping"
 readme = "README.md"
 authors = [
     { name = "Anonymous", email = "anonymous@review.placeholder" }

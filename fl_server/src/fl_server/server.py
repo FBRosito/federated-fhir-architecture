@@ -52,57 +52,59 @@ from __future__ import annotations
 import logging
 import math
 import os
+from collections.abc import Callable
 
-import flwr as fl
 import numpy as np
-from flwr.common import NDArrays, Scalar, ndarrays_to_parameters, parameters_to_ndarrays
+from flwr.common import Context, FitRes, Parameters, Scalar, parameters_to_ndarrays
 from flwr.server import ServerApp, ServerAppComponents, ServerConfig, start_server
-from flwr.server.strategy import FedAvg, FedProx, Strategy
+from flwr.server.client_proxy import ClientProxy
 from flwr.server.strategy import (
     DifferentialPrivacyServerSideAdaptiveClipping as DPAdaptiveClipping,
 )
-from flwr.server.strategy import (
-    DifferentialPrivacyServerSideFixedClipping as DPFixedClipping,
-)
+from flwr.server.strategy import FedAvg, FedProx, Strategy
 
 log = logging.getLogger(__name__)
 
 # ── Configuration from environment ───────────────────────────────────────────
 
+
 def _env_float(key: str, default: float) -> float:
     return float(os.getenv(key, default))
 
+
 def _env_int(key: str, default: int) -> int:
     return int(os.getenv(key, default))
+
 
 def _env_str(key: str, default: str) -> str:
     return os.getenv(key, default)
 
 
-SERVER_ADDRESS      = _env_str("FL_SERVER_ADDRESS", "[::]:9091")
-NETWORK_MODE        = _env_str("FL_NETWORK_MODE", "real").strip().lower()
-IS_SIMULATED        = NETWORK_MODE == "simulated"
-CA_CERT_PATH        = _env_str("FL_CA_CERT_PATH", "")
-SERVER_CERT_PATH    = _env_str("FL_SERVER_CERT_PATH", "")
-SERVER_KEY_PATH     = _env_str("FL_SERVER_KEY_PATH", "")
-ROUND_TIMEOUT       = _env_float("FL_ROUND_TIMEOUT", 3600.0)   # 1h — waits for clients
-NUM_ROUNDS          = _env_int("FL_NUM_ROUNDS", 5)
-MIN_CLIENTS         = _env_int("FL_MIN_CLIENTS", 2)
-STRATEGY_NAME       = _env_str("FL_STRATEGY", "fedprox").lower()
-PROXIMAL_MU         = _env_float("FL_PROXIMAL_MU", 0.01)
-NOISE_MULTIPLIER    = _env_float("FL_NOISE_MULTIPLIER", 0.9)
-INITIAL_CLIP_NORM   = _env_float("FL_INITIAL_CLIP_NORM", 1.0)
-CLIP_NORM_TARGET_Q  = _env_float("FL_CLIP_NORM_TARGET_Q", 0.5)
-FRACTION_FIT        = _env_float("FL_FRACTION_FIT", 1.0)
-FRACTION_EVAL       = _env_float("FL_FRACTION_EVAL", 1.0)
+SERVER_ADDRESS = _env_str("FL_SERVER_ADDRESS", "[::]:9091")
+NETWORK_MODE = _env_str("FL_NETWORK_MODE", "real").strip().lower()
+IS_SIMULATED = NETWORK_MODE == "simulated"
+CA_CERT_PATH = _env_str("FL_CA_CERT_PATH", "")
+SERVER_CERT_PATH = _env_str("FL_SERVER_CERT_PATH", "")
+SERVER_KEY_PATH = _env_str("FL_SERVER_KEY_PATH", "")
+ROUND_TIMEOUT = _env_float("FL_ROUND_TIMEOUT", 3600.0)  # 1h — waits for clients
+NUM_ROUNDS = _env_int("FL_NUM_ROUNDS", 5)
+MIN_CLIENTS = _env_int("FL_MIN_CLIENTS", 2)
+STRATEGY_NAME = _env_str("FL_STRATEGY", "fedprox").lower()
+PROXIMAL_MU = _env_float("FL_PROXIMAL_MU", 0.01)
+NOISE_MULTIPLIER = _env_float("FL_NOISE_MULTIPLIER", 0.9)
+INITIAL_CLIP_NORM = _env_float("FL_INITIAL_CLIP_NORM", 1.0)
+CLIP_NORM_TARGET_Q = _env_float("FL_CLIP_NORM_TARGET_Q", 0.5)
+FRACTION_FIT = _env_float("FL_FRACTION_FIT", 1.0)
+FRACTION_EVAL = _env_float("FL_FRACTION_EVAL", 1.0)
 # Learning rate sent to clients in fit_config; overridable per round.
 # In fast-dev mode with few examples, use smaller values (e.g. 5e-6) to avoid
 # destructive fine-tuning that overwrites the base model's pre-trained knowledge.
-LEARNING_RATE       = _env_float("FL_LEARNING_RATE", 5e-5)
-EVAL_ACCURACY       = os.getenv("FL_EVAL_ACCURACY", "false").lower() == "true"
-NUM_EPOCHS          = _env_int("FL_NUM_EPOCHS", 1)
+LEARNING_RATE = _env_float("FL_LEARNING_RATE", 5e-5)
+EVAL_ACCURACY = os.getenv("FL_EVAL_ACCURACY", "false").lower() == "true"
+NUM_EPOCHS = _env_int("FL_NUM_EPOCHS", 1)
 
 # ── Privacy budget estimation (Gaussian Mechanism approximation) ──────────────
+
 
 def estimate_privacy_budget(
     noise_multiplier: float,
@@ -141,19 +143,34 @@ def estimate_privacy_budget(
 
 # ── NaN filter for aggregation ────────────────────────────────────────────────
 
+
 def _has_nan(parameters) -> bool:
     return any(not np.all(np.isfinite(a)) for a in parameters_to_ndarrays(parameters))
 
 
 class NaNSafeMixin:
     """Drops clients with NaN/Inf weights before delegating aggregation."""
-    def aggregate_fit(self, server_round, results, failures):
+
+    def aggregate_fit(
+        self,
+        server_round: int,
+        results: list[tuple[ClientProxy, FitRes]],
+        failures: list[tuple[ClientProxy, FitRes] | BaseException],
+    ) -> tuple[Parameters | None, dict[str, Scalar]]:
+        """Filter out NaN/Inf results, then delegate to the wrapped strategy.
+
+        Returns:
+            Tuple of (aggregated parameters, metrics); ``(None, {})`` when no
+            valid result remains, which makes Flower skip the round.
+        """
         valid = [(c, r) for c, r in results if not _has_nan(r.parameters)]
         dropped = len(results) - len(valid)
         if dropped:
             log.warning(
                 "Round %d: %d/%d clients dropped (NaN/Inf in weights).",
-                server_round, dropped, len(results),
+                server_round,
+                dropped,
+                len(results),
             )
         if not valid:
             log.error("Round %d: all clients have NaN — round skipped.", server_round)
@@ -161,8 +178,12 @@ class NaNSafeMixin:
         return super().aggregate_fit(server_round, valid, failures)
 
 
-class NaNSafeFedAvg(NaNSafeMixin, FedAvg): pass
-class NaNSafeFedProx(NaNSafeMixin, FedProx): pass
+class NaNSafeFedAvg(NaNSafeMixin, FedAvg):
+    pass
+
+
+class NaNSafeFedProx(NaNSafeMixin, FedProx):
+    pass
 
 
 class PartialResultsDPStrategy(DPAdaptiveClipping):
@@ -179,20 +200,35 @@ class PartialResultsDPStrategy(DPAdaptiveClipping):
     necessary when all clients are present.
     """
 
-    def aggregate_fit(self, server_round, results, failures):
+    def aggregate_fit(
+        self,
+        server_round: int,
+        results: list[tuple[ClientProxy, FitRes]],
+        failures: list[tuple[ClientProxy, FitRes] | BaseException],
+    ) -> tuple[Parameters | None, dict[str, Scalar]]:
+        """Filter NaN/Inf results and tolerate gRPC failures before DP aggregation.
+
+        Returns:
+            Tuple of (aggregated parameters, metrics); ``(None, {})`` when no
+            valid result remains, which makes Flower skip the round.
+        """
         # Filter NaN/Inf weights from received results
         valid = [(c, r) for c, r in results if not _has_nan(r.parameters)]
         nan_dropped = len(results) - len(valid)
         if nan_dropped:
             log.warning(
                 "Round %d: %d/%d results with NaN/Inf dropped before DP.",
-                server_round, nan_dropped, len(results),
+                server_round,
+                nan_dropped,
+                len(results),
             )
         if failures:
             log.warning(
                 "Round %d: %d gRPC failure(s) ignored — "
                 "proceeding with %d valid result(s).",
-                server_round, len(failures), len(valid),
+                server_round,
+                len(failures),
+                len(valid),
             )
         if not valid:
             log.error(
@@ -206,30 +242,31 @@ class PartialResultsDPStrategy(DPAdaptiveClipping):
 
 # ── Strategy builders ─────────────────────────────────────────────────────────
 
+
 def build_base_strategy(
     strategy_name: str,
     min_clients: int,
     fraction_fit: float,
     fraction_eval: float,
     proximal_mu: float,
-    fit_metrics_fn,
-    eval_metrics_fn,
+    fit_metrics_fn: Callable[[list[tuple[int, dict[str, Scalar]]]], dict[str, Scalar]],
+    eval_metrics_fn: Callable[[list[tuple[int, dict[str, Scalar]]]], dict[str, Scalar]],
 ) -> Strategy:
     """Instantiates FedProx or FedAvg according to `strategy_name`."""
     common_kwargs = dict(
-        fraction_fit                  = fraction_fit,
-        fraction_evaluate             = fraction_eval,
-        min_fit_clients               = min_clients,
-        min_evaluate_clients          = max(1, min_clients // 2),
-        min_available_clients         = min_clients,
-        on_fit_config_fn              = make_fit_config_fn(proximal_mu, NUM_EPOCHS),
-        on_evaluate_config_fn         = make_eval_config_fn(),
-        fit_metrics_aggregation_fn    = fit_metrics_fn,
-        evaluate_metrics_aggregation_fn = eval_metrics_fn,
-        accept_failures               = True,
+        fraction_fit=fraction_fit,
+        fraction_evaluate=fraction_eval,
+        min_fit_clients=min_clients,
+        min_evaluate_clients=max(1, min_clients // 2),
+        min_available_clients=min_clients,
+        on_fit_config_fn=make_fit_config_fn(proximal_mu, NUM_EPOCHS),
+        on_evaluate_config_fn=make_eval_config_fn(),
+        fit_metrics_aggregation_fn=fit_metrics_fn,
+        evaluate_metrics_aggregation_fn=eval_metrics_fn,
+        accept_failures=True,
         # initial_parameters=None: Flower will request initial parameters
         # from the first available client in round 0
-        initial_parameters            = None,
+        initial_parameters=None,
     )
 
     if strategy_name == "fedprox":
@@ -278,26 +315,33 @@ def wrap_with_dp(
     clipped_count_stddev = max(1.0, math.sqrt(num_sampled_clients))
 
     dp_strategy = PartialResultsDPStrategy(
-        strategy              = base_strategy,
-        noise_multiplier      = noise_multiplier,
-        num_sampled_clients   = num_sampled_clients,
-        initial_clipping_norm = initial_clip_norm,
-        target_clipped_quantile = target_quantile,
-        clip_norm_lr          = 0.2,
-        clipped_count_stddev  = clipped_count_stddev,
+        strategy=base_strategy,
+        noise_multiplier=noise_multiplier,
+        num_sampled_clients=num_sampled_clients,
+        initial_clipping_norm=initial_clip_norm,
+        target_clipped_quantile=target_quantile,
+        clip_norm_lr=0.2,
+        clipped_count_stddev=clipped_count_stddev,
     )
     log.info(
         "Adaptive DP configured: σ=%.2f, C_0=%.2f, q_target=%.2f, "
         "σ_count=%.2f, clients/round=%d",
-        noise_multiplier, initial_clip_norm, target_quantile,
-        clipped_count_stddev, num_sampled_clients,
+        noise_multiplier,
+        initial_clip_norm,
+        target_quantile,
+        clipped_count_stddev,
+        num_sampled_clients,
     )
     return dp_strategy
 
 
 # ── Per-round configuration callbacks ────────────────────────────────────────
 
-def make_fit_config_fn(proximal_mu: float, num_epochs: int = 1):
+
+def make_fit_config_fn(
+    proximal_mu: float,
+    num_epochs: int = 1,
+) -> Callable[[int], dict[str, Scalar]]:
     """
     Returns a function that generates the training configuration sent to each
     client at the start of each `fit` round.
@@ -305,33 +349,40 @@ def make_fit_config_fn(proximal_mu: float, num_epochs: int = 1):
     The `proximal_mu` field is forwarded to the client so it can apply the
     correct proximal term even without knowing the global server configuration.
     """
+
     def fit_config(server_round: int) -> dict[str, Scalar]:
+        """Per-round fit config: LR decays to 40% after round 2."""
         # Base LR from FL_LEARNING_RATE; later rounds use 40% of initial value.
         # With few examples (fast-dev), set FL_LEARNING_RATE=5e-6 in docker-compose
         # or Makefile to prevent LoRA from destroying the base model's knowledge.
         lr = LEARNING_RATE if server_round <= 2 else LEARNING_RATE * 0.4
         config: dict[str, Scalar] = {
-            "server_round":  server_round,
-            "proximal_mu":   proximal_mu,
+            "server_round": server_round,
+            "proximal_mu": proximal_mu,
             "learning_rate": lr,
-            "num_epochs":    num_epochs,
+            "num_epochs": num_epochs,
         }
         log.debug("fit_config round %d: %s", server_round, config)
         return config
+
     return fit_config
 
 
-def make_eval_config_fn():
+def make_eval_config_fn() -> Callable[[int], dict[str, Scalar]]:
     """Returns a function that generates the evaluation configuration per round."""
+
     def eval_config(server_round: int) -> dict[str, Scalar]:
+        """Per-round evaluation config sent to each client."""
         return {
             "server_round": server_round,
             "compute_accuracy": EVAL_ACCURACY,
         }
+
     return eval_config
 
 
 # ── Metrics aggregation ───────────────────────────────────────────────────────
+
 
 def aggregate_fit_metrics(
     metrics: list[tuple[int, dict[str, Scalar]]],
@@ -386,16 +437,17 @@ def aggregate_eval_metrics(
 
 # ── Full strategy builder ─────────────────────────────────────────────────────
 
+
 def build_strategy(
-    strategy_name: str  = STRATEGY_NAME,
-    min_clients: int    = MIN_CLIENTS,
-    num_rounds: int     = NUM_ROUNDS,
+    strategy_name: str = STRATEGY_NAME,
+    min_clients: int = MIN_CLIENTS,
+    num_rounds: int = NUM_ROUNDS,
     fraction_fit: float = FRACTION_FIT,
     fraction_eval: float = FRACTION_EVAL,
-    proximal_mu: float  = PROXIMAL_MU,
+    proximal_mu: float = PROXIMAL_MU,
     noise_multiplier: float = NOISE_MULTIPLIER,
     initial_clip_norm: float = INITIAL_CLIP_NORM,
-    target_quantile: float  = CLIP_NORM_TARGET_Q,
+    target_quantile: float = CLIP_NORM_TARGET_Q,
 ) -> Strategy:
     """
     Builds the base strategy (FedProx|FedAvg) without server-side DP.
@@ -408,13 +460,13 @@ def build_strategy(
     num_sampled = max(1, round(min_clients * fraction_fit))
 
     strategy = build_base_strategy(
-        strategy_name  = strategy_name,
-        min_clients    = min_clients,
-        fraction_fit   = fraction_fit,
-        fraction_eval  = fraction_eval,
-        proximal_mu    = proximal_mu,
-        fit_metrics_fn = aggregate_fit_metrics,
-        eval_metrics_fn = aggregate_eval_metrics,
+        strategy_name=strategy_name,
+        min_clients=min_clients,
+        fraction_fit=fraction_fit,
+        fraction_eval=fraction_eval,
+        proximal_mu=proximal_mu,
+        fit_metrics_fn=aggregate_fit_metrics,
+        eval_metrics_fn=aggregate_eval_metrics,
     )
 
     if noise_multiplier > 0:
@@ -424,17 +476,19 @@ def build_strategy(
             noise_multiplier,
         )
         eps = estimate_privacy_budget(
-            noise_multiplier        = noise_multiplier,
-            num_rounds              = num_rounds,
-            num_clients_per_round   = num_sampled,
-            total_clients           = min_clients,
-            delta                   = 1e-5,
+            noise_multiplier=noise_multiplier,
+            num_rounds=num_rounds,
+            num_clients_per_round=num_sampled,
+            total_clients=min_clients,
+            delta=1e-5,
         )
         log.info(
             "Estimated privacy budget (δ=1e-5): ε ≈ %.4f "
             "over %d rounds with σ=%.2f [conservative upper bound — "
             "exact ε reported per-round by clients via RDP accountant]",
-            eps, num_rounds, noise_multiplier,
+            eps,
+            num_rounds,
+            noise_multiplier,
         )
         if eps > 10.0:
             log.warning(
@@ -450,7 +504,8 @@ def build_strategy(
 
 # ── ServerApp (Flower 1.x modern API) ────────────────────────────────────────
 
-def server_fn(context) -> ServerAppComponents:
+
+def server_fn(context: Context) -> ServerAppComponents:
     """
     ServerApp factory function. Called by the Flower runtime on startup.
 
@@ -460,20 +515,20 @@ def server_fn(context) -> ServerAppComponents:
     run_cfg = context.run_config if hasattr(context, "run_config") else {}
 
     strategy = build_strategy(
-        strategy_name    = str(run_cfg.get("strategy",        STRATEGY_NAME)),
-        min_clients      = int(run_cfg.get("min_clients",     MIN_CLIENTS)),
-        num_rounds       = int(run_cfg.get("num_rounds",      NUM_ROUNDS)),
-        fraction_fit     = float(run_cfg.get("fraction_fit",  FRACTION_FIT)),
-        fraction_eval    = float(run_cfg.get("fraction_eval", FRACTION_EVAL)),
-        proximal_mu      = float(run_cfg.get("proximal_mu",   PROXIMAL_MU)),
-        noise_multiplier = float(run_cfg.get("noise_multiplier", NOISE_MULTIPLIER)),
-        initial_clip_norm = float(run_cfg.get("initial_clip_norm", INITIAL_CLIP_NORM)),
-        target_quantile  = float(run_cfg.get("target_quantile", CLIP_NORM_TARGET_Q)),
+        strategy_name=str(run_cfg.get("strategy", STRATEGY_NAME)),
+        min_clients=int(run_cfg.get("min_clients", MIN_CLIENTS)),
+        num_rounds=int(run_cfg.get("num_rounds", NUM_ROUNDS)),
+        fraction_fit=float(run_cfg.get("fraction_fit", FRACTION_FIT)),
+        fraction_eval=float(run_cfg.get("fraction_eval", FRACTION_EVAL)),
+        proximal_mu=float(run_cfg.get("proximal_mu", PROXIMAL_MU)),
+        noise_multiplier=float(run_cfg.get("noise_multiplier", NOISE_MULTIPLIER)),
+        initial_clip_norm=float(run_cfg.get("initial_clip_norm", INITIAL_CLIP_NORM)),
+        target_quantile=float(run_cfg.get("target_quantile", CLIP_NORM_TARGET_Q)),
     )
 
     config = ServerConfig(
-        num_rounds    = int(run_cfg.get("num_rounds", NUM_ROUNDS)),
-        round_timeout = float(run_cfg.get("round_timeout", 300.0)),
+        num_rounds=int(run_cfg.get("num_rounds", NUM_ROUNDS)),
+        round_timeout=float(run_cfg.get("round_timeout", 300.0)),
     )
 
     return ServerAppComponents(strategy=strategy, config=config)
@@ -484,6 +539,7 @@ app = ServerApp(server_fn=server_fn)
 
 
 # ── TLS certificates (FL_NETWORK_MODE=real) ──────────────────────────────────
+
 
 def _load_server_certificates() -> tuple[bytes, bytes, bytes] | None:
     if not (CA_CERT_PATH and SERVER_CERT_PATH and SERVER_KEY_PATH):
@@ -499,19 +555,26 @@ def _load_server_certificates() -> tuple[bytes, bytes, bytes] | None:
 
 # ── Legacy entry point (start_server) ────────────────────────────────────────
 
+
 def main() -> None:
+    """Legacy ``start_server`` entry point (SuperLink/SuperNode use ``server_fn``)."""
     logging.basicConfig(
-        level   = logging.INFO,
-        format  = "%(asctime)s [%(levelname)s] %(name)s — %(message)s",
-        datefmt = "%Y-%m-%dT%H:%M:%S",
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S",
     )
 
     log.info("=== FL Server starting ===")
     log.info(
         "Config: strategy=%s | rounds=%d | epochs=%d | min_clients=%d | "
         "σ=%.2f | C_0=%.2f | μ=%.4f",
-        STRATEGY_NAME, NUM_ROUNDS, NUM_EPOCHS, MIN_CLIENTS,
-        NOISE_MULTIPLIER, INITIAL_CLIP_NORM, PROXIMAL_MU,
+        STRATEGY_NAME,
+        NUM_ROUNDS,
+        NUM_EPOCHS,
+        MIN_CLIENTS,
+        NOISE_MULTIPLIER,
+        INITIAL_CLIP_NORM,
+        PROXIMAL_MU,
     )
     log.info(
         "Privacy architecture: DP applied CLIENT-SIDE (Opacus on LoRA layers). "
@@ -521,22 +584,25 @@ def main() -> None:
 
     strategy = build_strategy()
 
-    log.info("FL network mode: %s", "SIMULATED (insecure loopback)" if IS_SIMULATED else "REAL (TLS)")
+    log.info(
+        "FL network mode: %s",
+        "SIMULATED (insecure loopback)" if IS_SIMULATED else "REAL (TLS)",
+    )
 
     if IS_SIMULATED:
         history = start_server(
-            server_address         = SERVER_ADDRESS,
-            config                 = ServerConfig(num_rounds=NUM_ROUNDS, round_timeout=ROUND_TIMEOUT),
-            strategy               = strategy,
-            grpc_max_message_length = 512 * 1024 * 1024,  # 512 MB — LLM weights are large
+            server_address=SERVER_ADDRESS,
+            config=ServerConfig(num_rounds=NUM_ROUNDS, round_timeout=ROUND_TIMEOUT),
+            strategy=strategy,
+            grpc_max_message_length=512 * 1024 * 1024,  # 512 MB — LLM weights are large
         )
     else:
         history = start_server(
-            server_address         = SERVER_ADDRESS,
-            config                 = ServerConfig(num_rounds=NUM_ROUNDS, round_timeout=ROUND_TIMEOUT),
-            strategy               = strategy,
-            grpc_max_message_length = 512 * 1024 * 1024,  # 512 MB — LLM weights are large
-            certificates            = _load_server_certificates(),
+            server_address=SERVER_ADDRESS,
+            config=ServerConfig(num_rounds=NUM_ROUNDS, round_timeout=ROUND_TIMEOUT),
+            strategy=strategy,
+            grpc_max_message_length=512 * 1024 * 1024,  # 512 MB — LLM weights are large
+            certificates=_load_server_certificates(),
         )
 
     _print_training_summary(history, NUM_ROUNDS)
@@ -557,38 +623,55 @@ def _print_training_summary(history, num_rounds: int) -> None:
             log.info("  Round %2d | loss=%.6f", rnd, loss)
 
     if history.metrics_distributed_fit:
-        all_rounds   = sorted({r for vals in history.metrics_distributed_fit.values() for r, _ in vals})
-        metric_keys  = sorted(history.metrics_distributed_fit.keys())
-        col_w        = max(22, max(len(k) for k in metric_keys) + 2)
-        header       = "  ".join(f"{k:>{col_w}}" for k in metric_keys)
+        all_rounds = sorted(
+            {r for vals in history.metrics_distributed_fit.values() for r, _ in vals}
+        )
+        metric_keys = sorted(history.metrics_distributed_fit.keys())
+        col_w = max(22, max(len(k) for k in metric_keys) + 2)
+        header = "  ".join(f"{k:>{col_w}}" for k in metric_keys)
         log.info("── Training metrics (fit) per round ──")
         log.info("  %-8s  %s", "Round", header)
         for rnd in all_rounds:
-            row = {k: next((v for r, v in history.metrics_distributed_fit[k] if r == rnd), float("nan"))
-                   for k in metric_keys}
+            row = {
+                k: next(
+                    (v for r, v in history.metrics_distributed_fit[k] if r == rnd),
+                    float("nan"),
+                )
+                for k in metric_keys
+            }
             vals_str = "  ".join(f"{float(row[k]):>{col_w}.6f}" for k in metric_keys)
             log.info("  %-8d  %s", rnd, vals_str)
 
     if history.metrics_distributed:
-        all_rounds  = sorted({r for vals in history.metrics_distributed.values() for r, _ in vals})
+        all_rounds = sorted(
+            {r for vals in history.metrics_distributed.values() for r, _ in vals}
+        )
         metric_keys = sorted(history.metrics_distributed.keys())
-        col_w       = max(22, max(len(k) for k in metric_keys) + 2)
-        header      = "  ".join(f"{k:>{col_w}}" for k in metric_keys)
+        col_w = max(22, max(len(k) for k in metric_keys) + 2)
+        header = "  ".join(f"{k:>{col_w}}" for k in metric_keys)
         log.info("── Evaluation metrics per round ──")
         log.info("  %-8s  %s", "Round", header)
         for rnd in all_rounds:
-            row = {k: next((v for r, v in history.metrics_distributed[k] if r == rnd), float("nan"))
-                   for k in metric_keys}
+            row = {
+                k: next(
+                    (v for r, v in history.metrics_distributed[k] if r == rnd),
+                    float("nan"),
+                )
+                for k in metric_keys
+            }
             vals_str = "  ".join(f"{float(row[k]):>{col_w}.6f}" for k in metric_keys)
             log.info("  %-8d  %s", rnd, vals_str)
 
     if history.losses_distributed and len(history.losses_distributed) >= 2:
         losses = [v for _, v in sorted(history.losses_distributed)]
-        delta  = losses[-1] - losses[0]
-        trend  = "decreasing (converging)" if delta < 0 else "increasing (diverging)"
+        delta = losses[-1] - losses[0]
+        trend = "decreasing (converging)" if delta < 0 else "increasing (diverging)"
         log.info(
             "── Loss trend: %s (Δ=%.4f | round1=%.4f | last=%.4f)",
-            trend, delta, losses[0], losses[-1],
+            trend,
+            delta,
+            losses[0],
+            losses[-1],
         )
 
     log.info(SEP)

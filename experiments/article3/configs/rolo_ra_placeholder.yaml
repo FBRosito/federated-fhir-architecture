@@ -1,4 +1,4 @@
-# Artigo 3 — RoLoRA (placeholder, implementação pendente de POC)
+# Article 3 — RoLoRA (placeholder, implementation pending PoC)
 lora_mode: rolo_ra
 # NOT YET IMPLEMENTED — requires server-side alternation logic
 # Implementation planned after FFA-LoRA validation

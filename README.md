@@ -1,8 +1,11 @@
-# Federated Learning over FHIR Clinical Data
+# HERALD: FHIR-Native Federated Learning for Clinical NLP
 
+[![CI](https://github.com/FBRosito/federated-fhir-architecture/actions/workflows/ci.yml/badge.svg)](https://github.com/FBRosito/federated-fhir-architecture/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 **Privacy-preserving clinical NLP across distributed healthcare silos using HL7 FHIR, FedProx, and Differential Privacy.**
+
+> ⚠️ **Research Software**: This is a research prototype published for reproducibility. It is **not validated for clinical use** and must not be used to process real patient data outside an authorized, credentialed environment.
 
 ---
 
@@ -19,6 +22,9 @@
 9. [Privacy and Differential Privacy](#privacy-and-differential-privacy)
 10. [Repository Structure](#repository-structure)
 11. [Citation](#citation)
+12. [License](#license)
+13. [Contributing](#contributing)
+14. [Security](#security)
 
 ---
 
@@ -559,18 +565,34 @@ federated-fhir-architecture/
 
 ---
 
+## License
+
+This project is released under the [MIT License](LICENSE).
+
+## Contributing
+
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for code style,
+testing, and the pull-request process. By participating you agree to abide by the
+[Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Security
+
+This repository must never contain patient data or credentials. If you find a
+security or privacy issue (including accidentally committed sensitive data),
+please follow the responsible-disclosure process in [SECURITY.md](SECURITY.md).
+
 ## Citation
 
 ```bibtex
-@inproceedings{anonymous2025herald,
+@inproceedings{rosito2025herald,
   title     = {{HERALD}: Healthcare fEderated leaRning Architecture with {LoRA}
                and Differential-privacy},
-  author    = {Anonymous},
+  author    = {Rosito, Fernando Barcelos and Franco, Muriel Figueredo and
+               Cazella, Silvio César},
   booktitle = {Proceedings of the IEEE International Conference on e-Health Networking,
                Application and Services (Healthcom)},
   year      = {2025},
   note      = {Under review},
-  url       = {[Anonymous for review]},
 }
 ```
 

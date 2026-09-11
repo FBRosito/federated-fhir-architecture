@@ -17,9 +17,10 @@ import logging
 import os
 from pathlib import Path
 
-from flwr.server import ServerConfig, start_server
-
 from article3.logging_utils import RoundLogger, RoundLogRecord
+from flwr.server import ServerConfig, start_server
+from flwr.server.strategy import Strategy
+
 from fl_server.server import (
     FRACTION_EVAL,
     FRACTION_FIT,
@@ -75,11 +76,17 @@ def _flush_eval_metrics(metrics: list[tuple[int, dict]]) -> dict:
             micro_f1=float(client_metrics.get("micro_f1", 0.0)),
             micro_f1_global=float(client_metrics.get("micro_f1_global", 0.0)),
             micro_f1_local=float(client_metrics.get("micro_f1_local", 0.0)),
-            epsilon=float(fit_metrics.get("epsilon_cumulative", fit_metrics.get("epsilon_spent", 0.0))),
+            epsilon=float(
+                fit_metrics.get(
+                    "epsilon_cumulative", fit_metrics.get("epsilon_spent", 0.0)
+                )
+            ),
             delta=_TARGET_DELTA,
             wall_clock_seconds=float(fit_metrics.get("wall_clock_seconds", 0.0)),
         )
-        logger = RoundLogger(experiment_tag=_EXPERIMENT_TAG, silo_id=silo_id, logs_root=_LOGS_DIR)
+        logger = RoundLogger(
+            experiment_tag=_EXPERIMENT_TAG, silo_id=silo_id, logs_root=_LOGS_DIR
+        )
         logger.log_round(record)
     return aggregated
 
@@ -91,7 +98,8 @@ def build_dual_lora_strategy(
     fraction_fit: float = FRACTION_FIT,
     fraction_eval: float = FRACTION_EVAL,
     proximal_mu: float = PROXIMAL_MU,
-):
+) -> Strategy:
+    """Build the base FedProx/FedAvg strategy with per-round JSONL metrics logging."""
     return build_base_strategy(
         strategy_name=strategy_name,
         min_clients=min_clients,
@@ -104,6 +112,7 @@ def build_dual_lora_strategy(
 
 
 def main() -> None:
+    """Legacy ``start_server`` entry point for the Article 3 dual-LoRA experiment."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
@@ -113,7 +122,12 @@ def main() -> None:
     log.info("=== Dual-LoRA FL Server starting ===")
     log.info(
         "Config: strategy=%s | lora_mode=%s | rounds=%d | min_clients=%d | σ=%.2f | tag=%s",
-        STRATEGY_NAME, _LORA_MODE, NUM_ROUNDS, MIN_CLIENTS, NOISE_MULTIPLIER, _EXPERIMENT_TAG,
+        STRATEGY_NAME,
+        _LORA_MODE,
+        NUM_ROUNDS,
+        MIN_CLIENTS,
+        NOISE_MULTIPLIER,
+        _EXPERIMENT_TAG,
     )
 
     strategy = build_dual_lora_strategy()

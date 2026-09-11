@@ -22,17 +22,16 @@ import os
 import pytest
 import torch
 import torch.nn as nn
-
 from adaptive_clipping.clipping import (
     PerLayerClipper,
     assert_model_reloaded,
     param_identity_fingerprint,
 )
 
-
 # ── Fixtures mirroring PubMedBERT+LoRA parameter naming ──────────────────────
 # (same shape as scripts/smoke_check_clipper.py's fakes, duplicated here so
 # this test has no dependency on that script.)
+
 
 class _FakeSelfAttention(nn.Module):
     """Mirrors HuggingFace BERT's real submodule naming: attention.self.{query,value}."""
@@ -69,7 +68,9 @@ class _FakePubMedBertLoRA(nn.Module):
     def __init__(self, num_layers: int = 2, dim: int = 4) -> None:
         super().__init__()
         self.encoder = nn.Module()
-        self.encoder.layer = nn.ModuleList(_FakeEncoderLayer(dim) for _ in range(num_layers))
+        self.encoder.layer = nn.ModuleList(
+            _FakeEncoderLayer(dim) for _ in range(num_layers)
+        )
         self.classifier = nn.Linear(dim, 3)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -92,6 +93,7 @@ def _train_one_step(model: nn.Module, seed: int) -> None:
 
 # ── 1. History survives simulated model reload (the original Bug 1 pattern) ─
 
+
 def test_history_accumulates_across_simulated_model_reloads():
     """A brand-new model instance every round, mirroring _load_model()
     producing a fresh model object on every fit() call in production. If
@@ -99,7 +101,9 @@ def test_history_accumulates_across_simulated_model_reloads():
     every round after the first would see .grad stay None on the ORIGINAL
     (now-orphaned) parameters, and history would freeze at round 1's values.
     """
-    clipper = PerLayerClipper(warmup_rounds=3, percentile=75.0, min_clip=0.1, max_clip=10.0, global_c0=1.0)
+    clipper = PerLayerClipper(
+        warmup_rounds=3, percentile=75.0, min_clip=0.1, max_clip=10.0, global_c0=1.0
+    )
 
     for round_idx in range(1, 6):  # Flower's server_round is 1-indexed
         model = _FakePubMedBertLoRA(num_layers=2)
@@ -126,7 +130,9 @@ def test_grouping_is_stable_across_reloads():
     """group_by_attention_layer must key on parameter NAME (stable across
     reloads), not on any per-instance identity — otherwise a fresh model's
     parameters would silently fail to join the accumulated history at all."""
-    clipper = PerLayerClipper(warmup_rounds=1, percentile=75.0, min_clip=0.1, max_clip=10.0)
+    clipper = PerLayerClipper(
+        warmup_rounds=1, percentile=75.0, min_clip=0.1, max_clip=10.0
+    )
     group_keys_per_round = []
     for round_idx in range(1, 4):
         model = _FakePubMedBertLoRA(num_layers=2)
@@ -142,6 +148,7 @@ def test_grouping_is_stable_across_reloads():
 
 # ── 2. Grad-presence guard (the direct, observable symptom of Bug 1) ────────
 
+
 def test_update_history_raises_when_a_group_has_no_gradient():
     """Simulates the DIRECT symptom of Bug 1: a stale nn.Parameter belonging
     to an already-replaced model has .grad permanently None. Feeds
@@ -149,7 +156,9 @@ def test_update_history_raises_when_a_group_has_no_gradient():
     backward() first, so every param's .grad is None — this must raise
     rather than silently recording a zero/skipped entry.
     """
-    clipper = PerLayerClipper(warmup_rounds=1, percentile=75.0, min_clip=0.1, max_clip=10.0)
+    clipper = PerLayerClipper(
+        warmup_rounds=1, percentile=75.0, min_clip=0.1, max_clip=10.0
+    )
     model = _FakePubMedBertLoRA(num_layers=2)
     # No backward() call: every .grad is None, exactly like a stale reference
     # to a deleted model's parameters.
@@ -160,7 +169,9 @@ def test_update_history_raises_when_a_group_has_no_gradient():
 def test_update_history_ok_when_gradients_present():
     """Sanity counterpart to the above: a normal round (backward() called
     first) must NOT raise."""
-    clipper = PerLayerClipper(warmup_rounds=1, percentile=75.0, min_clip=0.1, max_clip=10.0)
+    clipper = PerLayerClipper(
+        warmup_rounds=1, percentile=75.0, min_clip=0.1, max_clip=10.0
+    )
     model = _FakePubMedBertLoRA(num_layers=2)
     _train_one_step(model, seed=0)
     groups = clipper.update_history(1, model.named_parameters())  # must not raise
@@ -169,8 +180,11 @@ def test_update_history_ok_when_gradients_present():
 
 # ── 3. History-length integrity (call-count based, convention-agnostic) ─────
 
+
 def test_history_length_matches_call_count():
-    clipper = PerLayerClipper(warmup_rounds=1, percentile=75.0, min_clip=0.1, max_clip=10.0)
+    clipper = PerLayerClipper(
+        warmup_rounds=1, percentile=75.0, min_clip=0.1, max_clip=10.0
+    )
     for i in range(1, 4):
         model = _FakePubMedBertLoRA(num_layers=2)
         _train_one_step(model, seed=i)
@@ -184,15 +198,20 @@ def test_history_length_matches_call_count():
 
 # ── 4. Model-reload identity fingerprint (client-level guard primitive) ─────
 
+
 def test_assert_model_reloaded_passes_for_distinct_model_objects():
     """Two genuinely different model instances (the correct, reload-every-
     round behavior) must not raise."""
     model_round1 = _FakePubMedBertLoRA(num_layers=2)
     model_round2 = _FakePubMedBertLoRA(num_layers=2)
     fp1 = param_identity_fingerprint(model_round1.named_parameters())
-    assert_model_reloaded(fp1, previous_fingerprint=None, component_name="test")  # first call: no-op
+    assert_model_reloaded(
+        fp1, previous_fingerprint=None, component_name="test"
+    )  # first call: no-op
     fp2 = param_identity_fingerprint(model_round2.named_parameters())
-    assert_model_reloaded(fp2, previous_fingerprint=fp1, component_name="test")  # different objects: OK
+    assert_model_reloaded(
+        fp2, previous_fingerprint=fp1, component_name="test"
+    )  # different objects: OK
 
 
 def test_assert_model_reloaded_raises_for_same_model_object_reused():
@@ -204,9 +223,13 @@ def test_assert_model_reloaded_raises_for_same_model_object_reused():
     os.environ.pop("FL_KEEP_MODEL_IN_VRAM", None)
     model = _FakePubMedBertLoRA(num_layers=2)  # the SAME instance both "rounds"
     fp_round1 = param_identity_fingerprint(model.named_parameters())
-    fp_round2 = param_identity_fingerprint(model.named_parameters())  # same object again
+    fp_round2 = param_identity_fingerprint(
+        model.named_parameters()
+    )  # same object again
     with pytest.raises(RuntimeError, match="exact same nn.Parameter objects"):
-        assert_model_reloaded(fp_round2, previous_fingerprint=fp_round1, component_name="test")
+        assert_model_reloaded(
+            fp_round2, previous_fingerprint=fp_round1, component_name="test"
+        )
 
 
 def test_assert_model_reloaded_allows_reuse_when_keep_in_vram_is_true():
@@ -216,12 +239,15 @@ def test_assert_model_reloaded_allows_reuse_when_keep_in_vram_is_true():
     try:
         model = _FakePubMedBertLoRA(num_layers=2)
         fp = param_identity_fingerprint(model.named_parameters())
-        assert_model_reloaded(fp, previous_fingerprint=fp, component_name="test")  # must not raise
+        assert_model_reloaded(
+            fp, previous_fingerprint=fp, component_name="test"
+        )  # must not raise
     finally:
         os.environ.pop("FL_KEEP_MODEL_IN_VRAM", None)
 
 
 # ── 5. Demonstrates this test suite actually catches the pre-fix pattern ────
+
 
 class _BuggyClipperCachesParamsAtInit:
     """Reimplements PerLayerClipper's PRE-FIX behavior for this one test:
@@ -248,7 +274,8 @@ class _BuggyClipperCachesParamsAtInit:
             grads = [p.grad.detach() for p in params if p.grad is not None]
             self._history.setdefault(name, []).append(
                 float(torch.norm(torch.stack([g.norm(2) for g in grads]), 2).item())
-                if grads else 0.0
+                if grads
+                else 0.0
             )
 
 
@@ -285,7 +312,9 @@ def test_buggy_pre_fix_pattern_would_have_frozen_history():
 
     # And the real, fixed PerLayerClipper does NOT freeze under the identical
     # round-by-round model sequence:
-    real_clipper = PerLayerClipper(warmup_rounds=1, percentile=75.0, min_clip=0.1, max_clip=10.0)
+    real_clipper = PerLayerClipper(
+        warmup_rounds=1, percentile=75.0, min_clip=0.1, max_clip=10.0
+    )
     for round_idx in range(1, 5):
         fresh_model = _FakePubMedBertLoRA(num_layers=2)
         _train_one_step(fresh_model, seed=round_idx)

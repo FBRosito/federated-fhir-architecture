@@ -10,7 +10,6 @@ download. Run before any real (expensive) GPU training run:
 
 import torch
 import torch.nn as nn
-
 from adaptive_clipping.clipping import PerLayerClipper
 
 
@@ -27,6 +26,7 @@ class _FakeSelfAttention(nn.Module):
         self.value.lora_B = nn.Linear(2, dim, bias=False)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply the fake query/value LoRA branches and sum them."""
         q = self.query.lora_B(self.query.lora_A(x))
         v = self.value.lora_B(self.value.lora_A(x))
         return q + v
@@ -39,6 +39,7 @@ class _FakeEncoderLayer(nn.Module):
         self.attention.self = _FakeSelfAttention(dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Pass input through the fake self-attention block."""
         return self.attention.self(x)
 
 
@@ -49,10 +50,13 @@ class _FakePubMedBertLoRA(nn.Module):
     def __init__(self, num_layers: int = 2, dim: int = 4) -> None:
         super().__init__()
         self.encoder = nn.Module()
-        self.encoder.layer = nn.ModuleList(_FakeEncoderLayer(dim) for _ in range(num_layers))
+        self.encoder.layer = nn.ModuleList(
+            _FakeEncoderLayer(dim) for _ in range(num_layers)
+        )
         self.classifier = nn.Linear(dim, 3)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Run the fake encoder stack with residual connections, then classify."""
         h = x
         for layer in self.encoder.layer:
             h = h + layer(h)
@@ -60,6 +64,7 @@ class _FakePubMedBertLoRA(nn.Module):
 
 
 def check_grouping() -> None:
+    """Assert that per-layer grouping puts each encoder layer's LoRA params together."""
     print("== group_by_attention_layer ==")
     model = _FakePubMedBertLoRA(num_layers=2)
     named_params = list(model.named_parameters())
@@ -78,19 +83,25 @@ def check_grouping() -> None:
         "expected encoder.layer.1's query/value LoRA params in one group, "
         "separate from encoder.layer.0"
     )
-    assert "other" in groups and len(groups["other"]) == 2, (
-        "expected classifier.weight/classifier.bias to fall into the 'other' group"
+    assert (
+        "other" in groups and len(groups["other"]) == 2
+    ), "expected classifier.weight/classifier.bias to fall into the 'other' group"
+    print(
+        "  OK: encoder.layer.0 and encoder.layer.1 each grouped correctly; classifier -> other"
     )
-    print("  OK: encoder.layer.0 and encoder.layer.1 each grouped correctly; classifier -> other")
 
 
 def check_thresholds() -> None:
+    """Assert warmup uses the global C0 and post-warmup uses per-layer percentiles."""
     print("== compute_thresholds (warmup vs. post-warmup) ==")
     torch.manual_seed(0)
     model = _FakePubMedBertLoRA(num_layers=2)
     clipper = PerLayerClipper(
-        warmup_rounds=3, percentile=75.0,
-        min_clip=0.1, max_clip=10.0, global_c0=1.0,
+        warmup_rounds=3,
+        percentile=75.0,
+        min_clip=0.1,
+        max_clip=10.0,
+        global_c0=1.0,
     )
 
     x = torch.randn(8, 4)
@@ -107,9 +118,13 @@ def check_thresholds() -> None:
         label = "warmup" if round_idx < 3 else "post-warmup"
         print(f"  round {round_idx} ({label}): {thresholds}")
         if round_idx < 3:
-            assert all(v == 1.0 for v in thresholds.values()), "warmup rounds must return global_c0"
+            assert all(
+                v == 1.0 for v in thresholds.values()
+            ), "warmup rounds must return global_c0"
 
-    print("  OK: warmup rounds returned global_c0; post-warmup rounds returned calibrated per-group thresholds.")
+    print(
+        "  OK: warmup rounds returned global_c0; post-warmup rounds returned calibrated per-group thresholds."
+    )
     print(f"  Final round groups/thresholds: {thresholds}")
 
 
@@ -131,7 +146,9 @@ def check_history_survives_model_reload() -> None:
     what this actually guards against is a regression that reintroduces
     that caching)."""
     print("== update_history across simulated model reloads ==")
-    clipper = PerLayerClipper(warmup_rounds=3, percentile=75.0, min_clip=0.1, max_clip=10.0, global_c0=1.0)
+    clipper = PerLayerClipper(
+        warmup_rounds=3, percentile=75.0, min_clip=0.1, max_clip=10.0, global_c0=1.0
+    )
 
     for round_idx in range(5):
         torch.manual_seed(round_idx)
@@ -158,7 +175,9 @@ def check_history_survives_model_reload() -> None:
             f"{name}: all {len(stats['history'])} values are identical — history is frozen at "
             "round 1, not tracking each round's live gradients (the exact bug this test guards against)"
         )
-    print("  OK: history accumulated 5 distinct values per group across 5 simulated model reloads.")
+    print(
+        "  OK: history accumulated 5 distinct values per group across 5 simulated model reloads."
+    )
 
 
 if __name__ == "__main__":

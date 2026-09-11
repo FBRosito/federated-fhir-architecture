@@ -1,7 +1,7 @@
 [project]
 name = "ai-client"
 version = "0.1.0"
-description = "Add your description here"
+description = "Federated AI client (silo) — FHIR consumer, PEFT/LoRA training, DP-SGD"
 readme = "README.md"
 authors = [
     { name = "Anonymous", email = "anonymous@review.placeholder" }

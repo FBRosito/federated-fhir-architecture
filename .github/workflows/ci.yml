@@ -1,0 +1,33 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install black==24.1.0 flake8==7.0.0 isort==5.13.2
+      - run: black --check .
+      - run: flake8 .
+      - run: isort --profile black --check-only .
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      # CPU-only torch keeps the job small; the adaptive-clipping tests are
+      # CPU-compatible unit tests (no GPU, no data, no model downloads).
+      - run: pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install opacus==1.5.4 numpy==2.4.4 pytest==9.1.1
+      - name: Run adaptive-clipping unit tests
+        working-directory: experiments/adaptive-clipping
+        env:
+          PYTHONPATH: src:.
+        run: pytest tests/ -v

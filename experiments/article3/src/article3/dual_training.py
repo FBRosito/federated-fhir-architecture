@@ -46,7 +46,6 @@ from transformers import PreTrainedTokenizerBase
 from ai_client.model_setup_bert import (
     BertTrainingConfig,
     PLMICDModel,
-    build_bert_dataset,
     train_bert_one_round,
 )
 from evaluation.icd_metrics import ICD10Metrics, compute_icd_metrics
@@ -55,6 +54,7 @@ log = logging.getLogger(__name__)
 
 
 def local_adapter_path(logs_root: Path, experiment_tag: str, silo_id: int) -> Path:
+    """Path where a silo's frozen local LoRA adapter checkpoint is stored."""
     return Path(logs_root) / experiment_tag / str(silo_id) / "local_adapter.pt"
 
 
@@ -90,14 +90,19 @@ def dual_train_bert_one_round(
     loaded = _load_local_adapter(model, local_ckpt_path)
     log.info(
         "Dual LoRA: local adapter %s from %s",
-        "loaded" if loaded else "starting fresh (no checkpoint yet)", local_ckpt_path,
+        "loaded" if loaded else "starting fresh (no checkpoint yet)",
+        local_ckpt_path,
     )
 
     # 1. Global step — default adapter, DP-SGD as configured.
     model.encoder.set_adapter("default")
     updated_params, n_examples, metrics = train_bert_one_round(
-        model=model, tokenizer=tokenizer, examples=examples, label_index=label_index,
-        train_cfg=train_cfg, max_length=max_length,
+        model=model,
+        tokenizer=tokenizer,
+        examples=examples,
+        label_index=label_index,
+        train_cfg=train_cfg,
+        max_length=max_length,
     )
 
     # 2. Local step — local adapter, no DP, head frozen so this pass cannot
@@ -110,8 +115,12 @@ def dual_train_bert_one_round(
 
     local_cfg = replace(train_cfg, noise_multiplier=0.0, proximal_mu=0.0)
     train_bert_one_round(
-        model=model, tokenizer=tokenizer, examples=examples, label_index=label_index,
-        train_cfg=local_cfg, max_length=max_length,
+        model=model,
+        tokenizer=tokenizer,
+        examples=examples,
+        label_index=label_index,
+        train_cfg=local_cfg,
+        max_length=max_length,
     )  # side effect only — local adapter's weights update in place
 
     for p, rg in zip(head_params, prev_requires_grad):
@@ -148,8 +157,14 @@ def evaluate_bert_model_fused(
                 input_ids = batch["input_ids"].to(device)
                 attention_mask = batch["attention_mask"].to(device)
                 labels = batch["labels"].to(device)
-                with torch.amp.autocast("cuda", dtype=amp_dtype, enabled=torch.cuda.is_available()):
-                    out = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+                with torch.amp.autocast(
+                    "cuda", dtype=amp_dtype, enabled=torch.cuda.is_available()
+                ):
+                    out = model(
+                        input_ids=input_ids,
+                        attention_mask=attention_mask,
+                        labels=labels,
+                    )
                 all_logits.append(out["logits"].float().cpu())
                 all_labels.append(labels.float().cpu())
         return torch.cat(all_logits, dim=0), torch.cat(all_labels, dim=0)
@@ -175,6 +190,8 @@ def evaluate_bert_model_fused(
     local_metrics = _to_metrics(logits_local)
     log.info(
         "Dual LoRA eval: fused F1=%.4f | global-only F1=%.4f | local-only F1=%.4f",
-        fused_metrics.micro_f1, global_metrics.micro_f1, local_metrics.micro_f1,
+        fused_metrics.micro_f1,
+        global_metrics.micro_f1,
+        local_metrics.micro_f1,
     )
     return fused_metrics, global_metrics, local_metrics

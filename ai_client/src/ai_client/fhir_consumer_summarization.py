@@ -29,10 +29,10 @@ import httpx
 log = logging.getLogger(__name__)
 
 _DEFAULT_PAGE_SIZE = 50
-_REQUEST_TIMEOUT   = 30
+_REQUEST_TIMEOUT = 30
 
 # LOINC codes used to distinguish the two DocumentReferences in bundles
-_LOINC_PROGRESS_NOTE     = "11506-3"
+_LOINC_PROGRESS_NOTE = "11506-3"
 _LOINC_DISCHARGE_SUMMARY = "18842-5"
 
 
@@ -48,11 +48,12 @@ class SummarizationExample:
         icd10_codes:        List of all admission ICD-10 codes.
         partition_note:     Non-IID partition tag (for silo filtering).
     """
-    patient_ref:        str
+
+    patient_ref: str
     structured_context: str
-    reference_summary:  str
-    icd10_codes:        list[str] = field(default_factory=list)
-    partition_note:     str = ""
+    reference_summary: str
+    icd10_codes: list[str] = field(default_factory=list)
+    partition_note: str = ""
 
     # Alpaca instruction→response format — compatible with ClinicalICD10Dataset
     _INSTRUCTION = (
@@ -184,7 +185,9 @@ def fetch_summarization_examples(
             return [], stats
 
         # Index summaries by patient reference
-        summary_by_patient: dict[str, tuple[str, str]] = {}  # patient_ref → (text, condition_note)
+        summary_by_patient: dict[str, tuple[str, str]] = (
+            {}
+        )  # patient_ref → (text, condition_note)
         for doc in summaries:
             patient_ref = doc.get("subject", {}).get("reference", "")
             text = _decode_attachment(doc.get("content", []))
@@ -201,7 +204,9 @@ def fetch_summarization_examples(
             progress_url += f"&subject={patient_id}"
 
         progress_docs = _paginate(client, progress_url)
-        log.info("Clinical progress note DocumentReferences found: %d", len(progress_docs))
+        log.info(
+            "Clinical progress note DocumentReferences found: %d", len(progress_docs)
+        )
 
         progress_by_patient: dict[str, str] = {}
         for doc in progress_docs:
@@ -246,13 +251,15 @@ def fetch_summarization_examples(
 
             icd_codes, partition_note = conditions_by_patient.get(patient_ref, ([], ""))
 
-            examples.append(SummarizationExample(
-                patient_ref        = patient_ref,
-                structured_context = structured_context,
-                reference_summary  = reference_summary,
-                icd10_codes        = icd_codes,
-                partition_note     = partition_note,
-            ))
+            examples.append(
+                SummarizationExample(
+                    patient_ref=patient_ref,
+                    structured_context=structured_context,
+                    reference_summary=reference_summary,
+                    icd10_codes=icd_codes,
+                    partition_note=partition_note,
+                )
+            )
 
     if max_examples > 0 and len(examples) > max_examples:
         examples = examples[:max_examples]
@@ -260,6 +267,7 @@ def fetch_summarization_examples(
     stats.total_examples = len(examples)
     log.info(
         "SummarizationExamples assembled: %d | missing_summary=%d",
-        stats.total_examples, stats.missing_summary,
+        stats.total_examples,
+        stats.missing_summary,
     )
     return examples, stats

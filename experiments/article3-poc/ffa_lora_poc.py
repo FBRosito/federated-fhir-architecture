@@ -3,20 +3,22 @@ POC: FFA-LoRA compatibility with HERALD.
 Tests whether freezing LoRA A matrix via requires_grad=False works correctly
 with the HERALD DP-SGD training loop.
 """
-import torch
+
 import warnings
+
 warnings.filterwarnings("ignore")
 
 
-def test_ffa_lora():
+def test_ffa_lora() -> None:
+    """PoC: FFA-LoRA (frozen A, trainable B) on PubMedBERT."""
     print("=" * 60)
     print("POC: FFA-LoRA in HERALD environment")
     print("=" * 60)
 
     # Step 1: Load PubMedBERT + LoRA (same config as HERALD)
     print("\n[1] Loading PubMedBERT + LoRA (standard config)...")
+    from peft import LoraConfig, TaskType, get_peft_model
     from transformers import AutoModelForSequenceClassification
-    from peft import LoraConfig, get_peft_model, TaskType
 
     model_name = "microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract-fulltext"
     try:
@@ -25,7 +27,7 @@ def test_ffa_lora():
             num_labels=50,
             ignore_mismatched_sizes=True,
         )
-        print(f"  PubMedBERT loaded")
+        print("  PubMedBERT loaded")
     except Exception as e:
         print(f"  PubMedBERT failed ({e}), falling back to bert-base-uncased...")
         model = AutoModelForSequenceClassification.from_pretrained(
@@ -45,15 +47,17 @@ def test_ffa_lora():
 
     # Count trainable params before FFA
     trainable_before = {
-        name: p.numel()
-        for name, p in model.named_parameters()
-        if p.requires_grad
+        name: p.numel() for name, p in model.named_parameters() if p.requires_grad
     }
     print(f"  Trainable params (standard LoRA): {sum(trainable_before.values()):,}")
     lora_a_params = {k: v for k, v in trainable_before.items() if "lora_A" in k}
     lora_b_params = {k: v for k, v in trainable_before.items() if "lora_B" in k}
-    print(f"  lora_A params: {sum(lora_a_params.values()):,} across {len(lora_a_params)} modules")
-    print(f"  lora_B params: {sum(lora_b_params.values()):,} across {len(lora_b_params)} modules")
+    print(
+        f"  lora_A params: {sum(lora_a_params.values()):,} across {len(lora_a_params)} modules"
+    )
+    print(
+        f"  lora_B params: {sum(lora_b_params.values()):,} across {len(lora_b_params)} modules"
+    )
 
     # Step 2: Apply FFA-LoRA (freeze A matrices)
     print("\n[2] Applying FFA-LoRA (freezing lora_A matrices)...")
@@ -64,22 +68,17 @@ def test_ffa_lora():
             frozen_count += 1
 
     trainable_after = {
-        name: p.numel()
-        for name, p in model.named_parameters()
-        if p.requires_grad
+        name: p.numel() for name, p in model.named_parameters() if p.requires_grad
     }
     print(f"  Frozen lora_A modules: {frozen_count}")
     print(f"  Trainable params (FFA-LoRA): {sum(trainable_after.values()):,}")
 
     # Verify only lora_B and classifier are trainable
-    unexpected = [
-        name for name in trainable_after
-        if "lora_A" in name
-    ]
+    unexpected = [name for name in trainable_after if "lora_A" in name]
     if unexpected:
         print(f"  WARNING: lora_A still trainable: {unexpected}")
     else:
-        print(f"  Confirmed: no lora_A in trainable params")
+        print("  Confirmed: no lora_A in trainable params")
 
     # Step 3: Simulate HERALD DP-SGD training loop
     print("\n[3] Simulating HERALD DP-SGD with FFA-LoRA...")
@@ -155,8 +154,8 @@ def test_ffa_lora():
         losses.append(loss.item())
 
     print(f"  Steps completed: {len(losses)}")
-    print(f"  Losses: {[f'{l:.4f}' for l in losses]}")
-    print(f"  Training step with FFA-LoRA + manual DP-SGD: SUCCESS")
+    print(f"  Losses: {[f'{loss_val:.4f}' for loss_val in losses]}")
+    print("  Training step with FFA-LoRA + manual DP-SGD: SUCCESS")
 
     # Step 4: Verify model reload pattern (critical for HERALD)
     print("\n[4] Verifying model reload pattern...")
@@ -164,8 +163,8 @@ def test_ffa_lora():
     # FFA-LoRA must be re-applied after each reload.
     # Check: does loading a fresh model and re-applying FFA-LoRA work?
     try:
+        from peft import LoraConfig, TaskType, get_peft_model
         from transformers import AutoModelForSequenceClassification
-        from peft import LoraConfig, get_peft_model, TaskType
 
         model2 = AutoModelForSequenceClassification.from_pretrained(
             "bert-base-uncased", num_labels=50, ignore_mismatched_sizes=True
@@ -179,7 +178,7 @@ def test_ffa_lora():
 
         trainable2 = sum(p.numel() for p in model2.parameters() if p.requires_grad)
         print(f"  Reloaded model trainable params: {trainable2:,}")
-        print(f"  Model reload + FFA-LoRA re-apply: SUCCESS")
+        print("  Model reload + FFA-LoRA re-apply: SUCCESS")
     except Exception as e:
         print(f"  Model reload FAIL: {e}")
         return False
@@ -187,8 +186,10 @@ def test_ffa_lora():
     # Step 5: Verify epsilon calculation with q=0.01
     print("\n[5] Verifying epsilon with q=0.01, sigma=1.0, R=20 and R=100...")
     try:
-        from opacus.accountants import RDPAccountant
         import sys
+
+        from opacus.accountants import RDPAccountant
+
         sys.path.insert(0, "experiments/adaptive-clipping")
 
         n_silo = 1500
@@ -201,7 +202,9 @@ def test_ffa_lora():
             acc = RDPAccountant()
             acc.history = [(1.0, q_new, steps_total)]
             eps, _ = acc.get_privacy_spent(delta=1e-5)
-            print(f"  R={R:3d}: epsilon={eps:.4f} {'<= 10 SIM' if eps <= 10 else '> 10 NAO'}")
+            print(
+                f"  R={R:3d}: epsilon={eps:.4f} {'<= 10 SIM' if eps <= 10 else '> 10 NAO'}"
+            )
     except Exception as e:
         print(f"  Epsilon calculation error: {e}")
 
@@ -209,12 +212,12 @@ def test_ffa_lora():
     print("\n" + "=" * 60)
     print("SUMMARY")
     print("=" * 60)
-    print(f"  FFA-LoRA via requires_grad=False: WORKS")
-    print(f"  Compatible with HERALD DP-SGD: YES")
-    print(f"  Model reload compatible: YES")
-    print(f"  Change needed in production code: MINIMAL")
-    print(f"  Recommended implementation: freeze lora_A in model_setup_bert.py")
-    print(f"  via env var FL_LORA_MODE=ffa (default: standard)")
+    print("  FFA-LoRA via requires_grad=False: WORKS")
+    print("  Compatible with HERALD DP-SGD: YES")
+    print("  Model reload compatible: YES")
+    print("  Change needed in production code: MINIMAL")
+    print("  Recommended implementation: freeze lora_A in model_setup_bert.py")
+    print("  via env var FL_LORA_MODE=ffa (default: standard)")
     return True
 
 

@@ -42,17 +42,13 @@ import math
 import os
 import re
 from collections import defaultdict
-from typing import Any
-
-import numpy as np
-import torch
-from torch.utils.data import DataLoader
-
-from evaluation.grad_norm_logger import GradNormLogger, is_enabled as _grad_norm_logging_enabled
 
 import flwr as fl
+import numpy as np
+import torch
 from flwr.client import ClientApp, NumPyClient, start_client
 from flwr.common import Context, NDArrays, Scalar
+from torch.utils.data import DataLoader
 
 from ai_client.fhir_consumer import TrainingExample, fetch_training_examples
 from ai_client.model_setup import (
@@ -66,26 +62,28 @@ from ai_client.model_setup import (
     set_lora_parameters,
     train_one_round,
 )
+from evaluation.grad_norm_logger import GradNormLogger
+from evaluation.grad_norm_logger import is_enabled as _grad_norm_logging_enabled
 
 log = logging.getLogger(__name__)
 
 # ── Environment defaults ──────────────────────────────────────────────────────
 
-_FHIR_URL     = os.getenv("FHIR_SERVER_URL",   "http://localhost:8080/fhir")
-_FL_ADDRESS   = os.getenv("FL_SERVER_ADDRESS",  "localhost:9091")
+_FHIR_URL = os.getenv("FHIR_SERVER_URL", "http://localhost:8080/fhir")
+_FL_ADDRESS = os.getenv("FL_SERVER_ADDRESS", "localhost:9091")
 _NETWORK_MODE = os.getenv("FL_NETWORK_MODE", "real").strip().lower()
 _IS_SIMULATED = _NETWORK_MODE == "simulated"
 _CA_CERT_PATH = os.getenv("FL_CA_CERT_PATH", "")
 _PARTITION_ID = int(os.getenv("ETL_PARTITION_ID", "-1"))
-_MODEL_NAME   = os.getenv("MODEL_NAME",          "meta-llama/Llama-3.1-8B")
-_MAX_SEQ_LEN  = int(os.getenv("MAX_SEQ_LEN",     "512"))
-_EVAL_ACCURACY = os.getenv("FL_EVAL_ACCURACY",   "false").lower() == "true"
+_MODEL_NAME = os.getenv("MODEL_NAME", "meta-llama/Llama-3.1-8B")
+_MAX_SEQ_LEN = int(os.getenv("MAX_SEQ_LEN", "512"))
+_EVAL_ACCURACY = os.getenv("FL_EVAL_ACCURACY", "false").lower() == "true"
 # Number of beams for evaluation with beam search (Recall@k, F1@k).
-_TOP_K         = int(os.getenv("FL_TOP_K", "5"))
+_TOP_K = int(os.getenv("FL_TOP_K", "5"))
 # DP-SGD: Gaussian noise multiplier (0.0 = no DP).
 _NOISE_MULTIPLIER = float(os.getenv("FL_NOISE_MULTIPLIER", "0.0"))
 # DP: target δ for ε calculation via RDP accountant.
-_TARGET_DELTA     = float(os.getenv("FL_TARGET_DELTA", "1e-5"))
+_TARGET_DELTA = float(os.getenv("FL_TARGET_DELTA", "1e-5"))
 # DP: dataset subsampling rate per round (amplification-by-subsampling).
 _DP_SUBSAMPLE_RATE = float(os.getenv("FL_DP_SUBSAMPLE_RATE", "0.1"))
 # Calibration mode: no DP, logs empirical max_grad_norm of LoRA adapters.
@@ -97,16 +95,16 @@ _MAX_GRAD_NORM = float(os.getenv("FL_MAX_GRAD_NORM", "1.0"))
 _GPU_LOCK_PATH = os.getenv("GPU_LOCK_PATH", "/var/gpu_sync/gpu.lock")
 # When True, disables the lock so silos run in parallel on the GPU.
 # Safe for models <3B (1B uses ~4-5 GB peak; two silos fit within 12 GB).
-_PARALLEL_GPU  = os.getenv("FL_PARALLEL_GPU", "false").lower() == "true"
+_PARALLEL_GPU = os.getenv("FL_PARALLEL_GPU", "false").lower() == "true"
 
 # Fast-dev mode: keeps model in VRAM between calls within the same round.
-_KEEP_MODEL            = os.getenv("FL_KEEP_MODEL_IN_VRAM", "false").lower() == "true"
+_KEEP_MODEL = os.getenv("FL_KEEP_MODEL_IN_VRAM", "false").lower() == "true"
 # Fast-dev mode: caps training examples (0 = no limit).
-_MAX_EXAMPLES          = int(os.getenv("FL_MAX_EXAMPLES", "0"))
+_MAX_EXAMPLES = int(os.getenv("FL_MAX_EXAMPLES", "0"))
 # Overrides gradient_accum_steps (0 = use per-model default).
-_GRADIENT_ACCUM_STEPS  = int(os.getenv("FL_GRADIENT_ACCUM_STEPS", "0"))
+_GRADIENT_ACCUM_STEPS = int(os.getenv("FL_GRADIENT_ACCUM_STEPS", "0"))
 # Batch size per step; smaller models (<3B) support 8+ without OOM.
-_BATCH_SIZE            = int(os.getenv("FL_BATCH_SIZE", "8"))
+_BATCH_SIZE = int(os.getenv("FL_BATCH_SIZE", "8"))
 
 # Model backend:
 #   "llm"              — Llama-3.x with LoRA (default; Experiment B: discharge summary)
@@ -123,8 +121,8 @@ _CHECKPOINT_DIR = os.getenv("FL_SAVE_CHECKPOINT", "")
 # TurboQuant LoRA delta compression (two-stage: Lloyd-Max + QJL residual).
 # Reduces per-round communication: Llama-3.2-1B r=16 from ~32 MB to ~8 MB at 4-bit.
 # Inner products are preserved in expectation — FedProx convergence is maintained.
-_LORA_COMPRESS  = os.getenv("FL_LORA_COMPRESS", "false").lower() == "true"
-_COMPRESS_BITS  = int(os.getenv("FL_COMPRESS_BITS", "4"))
+_LORA_COMPRESS = os.getenv("FL_LORA_COMPRESS", "false").lower() == "true"
+_COMPRESS_BITS = int(os.getenv("FL_COMPRESS_BITS", "4"))
 
 
 @contextlib.contextmanager
@@ -149,7 +147,9 @@ def _gpu_lock():
             fcntl.flock(lock_file, fcntl.LOCK_UN)
             log.info("GPU lock released.")
 
+
 # ── Stratified train/eval split ───────────────────────────────────────────────
+
 
 def _stratified_split(
     examples: list[TrainingExample],
@@ -189,12 +189,14 @@ def _stratified_split(
     if not eval_ and train:
         rng.shuffle(train)
         n_move = max(1, math.ceil(len(train) * (1 - train_ratio)))
-        eval_  = train[:n_move]
-        train  = train[n_move:]
+        eval_ = train[:n_move]
+        train = train[n_move:]
 
     log.info(
         "Train/eval split: %d/%d examples across %d unique ICD-10 codes.",
-        len(train), len(eval_), len(by_code),
+        len(train),
+        len(eval_),
+        len(by_code),
     )
     return train, eval_
 
@@ -202,7 +204,7 @@ def _stratified_split(
 # ── Local evaluation ──────────────────────────────────────────────────────────
 
 ICD10_PATTERN = re.compile(r"\b([A-Z]\d{2}[A-Z0-9]{0,4}(?:\.\d{1,2})?)\b")
-RESPONSE_SEP  = "### Resposta:\n"
+RESPONSE_SEP = "### Resposta:\n"
 _DEBUG_SAMPLES = 10
 
 
@@ -240,47 +242,51 @@ def _evaluate_local(
     if not examples:
         return 0.0, 0, {"eval_loss": 0.0, "eval_perplexity": 1.0}
 
-    dataset    = build_dataset(examples, tokenizer, max_length)
+    dataset = build_dataset(examples, tokenizer, max_length)
     dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
-    device     = next(model.parameters()).device
+    device = next(model.parameters()).device
 
     model.eval()
-    total_loss   = 0.0
+    total_loss = 0.0
     total_tokens = 0
 
     with torch.no_grad():
         for batch in dataloader:
-            input_ids      = batch["input_ids"].to(device)
+            input_ids = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
-            labels         = batch["labels"].to(device)
+            labels = batch["labels"].to(device)
 
-            amp_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-            with torch.amp.autocast("cuda", dtype=amp_dtype, enabled=torch.cuda.is_available()):
+            amp_dtype = (
+                torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+            )
+            with torch.amp.autocast(
+                "cuda", dtype=amp_dtype, enabled=torch.cuda.is_available()
+            ):
                 outputs = model(
-                    input_ids      = input_ids,
-                    attention_mask = attention_mask,
-                    labels         = labels,
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    labels=labels,
                 )
 
             num_active = (labels != -100).sum().item()
             if num_active > 0:
-                total_loss   += outputs.loss.item() * num_active
+                total_loss += outputs.loss.item() * num_active
                 total_tokens += num_active
 
-    avg_loss   = total_loss / max(total_tokens, 1)
+    avg_loss = total_loss / max(total_tokens, 1)
     perplexity = float(torch.exp(torch.tensor(avg_loss)).item())
-    metrics    = {
-        "eval_loss":       round(avg_loss, 6),
+    metrics = {
+        "eval_loss": round(avg_loss, 6),
         "eval_perplexity": round(perplexity, 4),
     }
 
     # ── Beam search extraction metrics ───────────────────────────────────────
     if compute_accuracy:
-        hits_at_1  = 0
-        hits_at_k  = 0
+        hits_at_1 = 0
+        hits_at_k = 0
         recall_sum = 0.0
-        prec_sum   = 0.0
-        f1_sum     = 0.0
+        prec_sum = 0.0
+        f1_sum = 0.0
 
         for i, ex in enumerate(examples):
             # Ground truth: all admission codes (fallback: primary code only)
@@ -293,26 +299,28 @@ def _evaluate_local(
             prefix = ex.to_prompt().split(RESPONSE_SEP)[0] + RESPONSE_SEP
             enc = tokenizer(
                 prefix,
-                return_tensors      = "pt",
-                truncation          = True,
-                max_length          = max_length - 20,
-                add_special_tokens  = True,
+                return_tensors="pt",
+                truncation=True,
+                max_length=max_length - 20,
+                add_special_tokens=True,
             ).to(device)
 
             with torch.no_grad():
                 gen_ids = model.generate(
                     **enc,
-                    max_new_tokens       = 20,
-                    do_sample            = False,
-                    num_beams            = top_k,
-                    num_return_sequences = top_k,
-                    pad_token_id         = tokenizer.pad_token_id,
-                    eos_token_id         = tokenizer.eos_token_id,
+                    max_new_tokens=20,
+                    do_sample=False,
+                    num_beams=top_k,
+                    num_return_sequences=top_k,
+                    pad_token_id=tokenizer.pad_token_id,
+                    eos_token_id=tokenizer.eos_token_id,
                 )
 
             input_len = enc["input_ids"].shape[1]
             beams: list[set[str]] = [
-                _extract_icd_codes(tokenizer.decode(seq[input_len:], skip_special_tokens=True))
+                _extract_icd_codes(
+                    tokenizer.decode(seq[input_len:], skip_special_tokens=True)
+                )
                 for seq in gen_ids
             ]
             top1_codes = beams[0] if beams else set()
@@ -321,40 +329,47 @@ def _evaluate_local(
             hit_at_1 = bool(top1_codes & gt_codes)
             hit_at_k = bool(topk_codes & gt_codes)
             recall_k = len(topk_codes & gt_codes) / max(len(gt_codes), 1)
-            prec_k   = len(topk_codes & gt_codes) / max(len(topk_codes), 1)
-            f1_k     = (
-                2 * prec_k * recall_k / max(prec_k + recall_k, 1e-9)
-            )
+            prec_k = len(topk_codes & gt_codes) / max(len(topk_codes), 1)
+            f1_k = 2 * prec_k * recall_k / max(prec_k + recall_k, 1e-9)
 
-            hits_at_1  += int(hit_at_1)
-            hits_at_k  += int(hit_at_k)
+            hits_at_1 += int(hit_at_1)
+            hits_at_k += int(hit_at_k)
             recall_sum += recall_k
-            prec_sum   += prec_k
-            f1_sum     += f1_k
+            prec_sum += prec_k
+            f1_sum += f1_k
 
             if i < _DEBUG_SAMPLES:
                 log.info(
                     "GEN[%d] gt=%s | top1=%s | top%d=%s | R@k=%.2f F1@k=%.2f",
-                    i, sorted(gt_codes)[:3], sorted(top1_codes)[:2],
-                    top_k, sorted(topk_codes)[:3], recall_k, f1_k,
+                    i,
+                    sorted(gt_codes)[:3],
+                    sorted(top1_codes)[:2],
+                    top_k,
+                    sorted(topk_codes)[:3],
+                    recall_k,
+                    f1_k,
                 )
 
         n = max(len(examples), 1)
-        metrics["eval_icd10_accuracy"]    = round(hits_at_1 / n, 4)
-        metrics[f"eval_acc_at_{top_k}"]   = round(hits_at_k / n, 4)
-        metrics[f"eval_recall_at_{top_k}"]= round(recall_sum / n, 4)
-        metrics[f"eval_prec_at_{top_k}"]  = round(prec_sum / n, 4)
-        metrics[f"eval_f1_at_{top_k}"]    = round(f1_sum / n, 4)
+        metrics["eval_icd10_accuracy"] = round(hits_at_1 / n, 4)
+        metrics[f"eval_acc_at_{top_k}"] = round(hits_at_k / n, 4)
+        metrics[f"eval_recall_at_{top_k}"] = round(recall_sum / n, 4)
+        metrics[f"eval_prec_at_{top_k}"] = round(prec_sum / n, 4)
+        metrics[f"eval_f1_at_{top_k}"] = round(f1_sum / n, 4)
 
         log.info(
             "ICD-10 metrics (n=%d): acc@1=%.2f%% | acc@%d=%.2f%% | "
             "R@%d=%.2f%% | P@%d=%.2f%% | F1@%d=%.2f%%",
             n,
             metrics["eval_icd10_accuracy"] * 100,
-            top_k, metrics[f"eval_acc_at_{top_k}"] * 100,
-            top_k, metrics[f"eval_recall_at_{top_k}"] * 100,
-            top_k, metrics[f"eval_prec_at_{top_k}"] * 100,
-            top_k, metrics[f"eval_f1_at_{top_k}"] * 100,
+            top_k,
+            metrics[f"eval_acc_at_{top_k}"] * 100,
+            top_k,
+            metrics[f"eval_recall_at_{top_k}"] * 100,
+            top_k,
+            metrics[f"eval_prec_at_{top_k}"] * 100,
+            top_k,
+            metrics[f"eval_f1_at_{top_k}"] * 100,
         )
 
     model.train()
@@ -389,38 +404,51 @@ def _evaluate_summarization(
     from evaluation.summarization_metrics import evaluate_summaries
 
     if not examples:
-        return 1.0, 0, {"rouge_1": 0.0, "rouge_2": 0.0, "rouge_l": 0.0,
-                        "bertscore_f1": 0.0, "eval_loss": 1.0}
+        return (
+            1.0,
+            0,
+            {
+                "rouge_1": 0.0,
+                "rouge_2": 0.0,
+                "rouge_l": 0.0,
+                "bertscore_f1": 0.0,
+                "eval_loss": 1.0,
+            },
+        )
 
     device = next(model.parameters()).device
     model.eval()
     predictions: list[str] = []
-    references:  list[str] = []
+    references: list[str] = []
 
     with torch.no_grad():
         for ex in examples:
             prompt = ex.to_inference_prompt()
             enc = tokenizer(
                 prompt,
-                return_tensors     = "pt",
-                truncation         = True,
-                max_length         = max_length - max_gen_tokens,
-                add_special_tokens = True,
+                return_tensors="pt",
+                truncation=True,
+                max_length=max_length - max_gen_tokens,
+                add_special_tokens=True,
             ).to(device)
 
-            amp_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-            with torch.amp.autocast("cuda", dtype=amp_dtype, enabled=torch.cuda.is_available()):
+            amp_dtype = (
+                torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+            )
+            with torch.amp.autocast(
+                "cuda", dtype=amp_dtype, enabled=torch.cuda.is_available()
+            ):
                 gen_ids = model.generate(
                     **enc,
-                    max_new_tokens = max_gen_tokens,
-                    do_sample      = False,
-                    num_beams      = 4,
-                    pad_token_id   = tokenizer.pad_token_id,
-                    eos_token_id   = tokenizer.eos_token_id,
+                    max_new_tokens=max_gen_tokens,
+                    do_sample=False,
+                    num_beams=4,
+                    pad_token_id=tokenizer.pad_token_id,
+                    eos_token_id=tokenizer.eos_token_id,
                 )
 
             input_len = enc["input_ids"].shape[1]
-            gen_text  = tokenizer.decode(
+            gen_text = tokenizer.decode(
                 gen_ids[0][input_len:], skip_special_tokens=True
             ).strip()
             predictions.append(gen_text)
@@ -485,7 +513,8 @@ def verify_effective_learning_rate(server_round: int, learning_rate: float) -> N
         )
     log.info(
         "Fase 0: effective LR verified — round %d, lr=%.2e matches FL_LEARNING_RATE.",
-        server_round, learning_rate,
+        server_round,
+        learning_rate,
     )
 
 
@@ -500,6 +529,7 @@ def _compute_cumulative_epsilon(
         return float("inf")
     try:
         from opacus.accountants import RDPAccountant
+
         acc = RDPAccountant()
         for _ in range(total_steps):
             acc.step(noise_multiplier=noise_multiplier, sample_rate=sample_rate)
@@ -510,6 +540,7 @@ def _compute_cumulative_epsilon(
 
 
 # ── NumPyClient ───────────────────────────────────────────────────────────────
+
 
 class FHIRFederatedClient(NumPyClient):
     """
@@ -531,29 +562,29 @@ class FHIRFederatedClient(NumPyClient):
 
     def __init__(
         self,
-        fhir_url:     str = _FHIR_URL,
-        model_name:   str = _MODEL_NAME,
+        fhir_url: str = _FHIR_URL,
+        model_name: str = _MODEL_NAME,
         partition_id: int = _PARTITION_ID,
-        max_length:   int = _MAX_SEQ_LEN,
+        max_length: int = _MAX_SEQ_LEN,
         quant_cfg: QuantizationConfig | None = None,
-        lora_cfg:  LoRAAdapterConfig | None = None,
+        lora_cfg: LoRAAdapterConfig | None = None,
     ) -> None:
-        self.fhir_url     = fhir_url
-        self.model_name   = model_name
+        self.fhir_url = fhir_url
+        self.model_name = model_name
         self.partition_id = partition_id
-        self.max_length   = max_length
-        self.quant_cfg    = quant_cfg or QuantizationConfig()
-        self.lora_cfg     = lora_cfg  or LoRAAdapterConfig()
+        self.max_length = max_length
+        self.quant_cfg = quant_cfg or QuantizationConfig()
+        self.lora_cfg = lora_cfg or LoRAAdapterConfig()
 
         # Model and tokenizer — not cached between calls.
         # Loaded by _load_model() and unloaded by _unload_model()
         # inside the _gpu_lock() block at each fit/evaluate.
-        self._model     = None
+        self._model = None
         self._tokenizer = None
 
         # Examples loaded once and split for the entire session
         self._train_examples: list | None = None
-        self._eval_examples:  list | None = None
+        self._eval_examples: list | None = None
 
         # Backend: "llm" (generative Llama) or "bert" (PubMedBERT multi-label)
         # or "llm-summarization" (Llama for discharge summary generation)
@@ -564,10 +595,10 @@ class FHIRFederatedClient(NumPyClient):
         # Cumulative DP accounting across all FL rounds.
         # dp_steps is the total optimizer steps taken so far (with DP active).
         # σ, q, δ are captured from the first DP round and assumed constant.
-        self._dp_total_steps:      int   = 0
+        self._dp_total_steps: int = 0
         self._dp_noise_multiplier: float = 0.0
-        self._dp_sample_rate:      float = 1.0
-        self._dp_target_delta:     float = 1e-5
+        self._dp_sample_rate: float = 1.0
+        self._dp_target_delta: float = 1e-5
 
     # ── Model lifecycle management ────────────────────────────────────────────
 
@@ -585,7 +616,8 @@ class FHIRFederatedClient(NumPyClient):
             return
 
         if self._backend == "bert":
-            from ai_client.model_setup_bert import BertLoRAConfig, load_bert_model
+            from ai_client.model_setup_bert import load_bert_model
+
             # num_labels derived from the shared global label_index.json, filtered
             # by BERT_BENCHMARK so FL and centralised evaluate on identical label spaces.
             # top50: indices 0-49 in the global file (globally most frequent codes).
@@ -593,6 +625,7 @@ class FHIRFederatedClient(NumPyClient):
             _lp = os.getenv("BERT_LABEL_INDEX_PATH", "")
             if _lp and os.path.exists(_lp):
                 import json as _json
+
                 with open(_lp) as _f:
                     _full_idx = _json.load(_f)
                 num_labels = 50 if _BERT_BENCHMARK == "top50" else len(_full_idx)
@@ -600,21 +633,28 @@ class FHIRFederatedClient(NumPyClient):
                 num_labels = 50  # fallback for smoke tests without build-mimic
             log.info("Loading PubMedBERT (backend=bert, num_labels=%d)...", num_labels)
             model, tokenizer = load_bert_model(
-                model_name = self.model_name if self.model_name != _MODEL_NAME
-                             else "microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract-fulltext",
-                num_labels = num_labels,
+                model_name=(
+                    self.model_name
+                    if self.model_name != _MODEL_NAME
+                    else "microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract-fulltext"
+                ),
+                num_labels=num_labels,
             )
             device = "cuda" if __import__("torch").cuda.is_available() else "cpu"
             model.to(device)
         else:
-            log.info("Loading model '%s' (NF4 4-bit, backend=%s)...", self.model_name, self._backend)
+            log.info(
+                "Loading model '%s' (NF4 4-bit, backend=%s)...",
+                self.model_name,
+                self._backend,
+            )
             model, tokenizer = load_quantized_model(
-                model_name = self.model_name,
-                quant_cfg  = self.quant_cfg,
+                model_name=self.model_name,
+                quant_cfg=self.quant_cfg,
             )
             model = apply_lora(model, self.lora_cfg)
 
-        self._model     = model
+        self._model = model
         self._tokenizer = tokenizer
         log.info("Model loaded into VRAM (backend=%s).", self._backend)
 
@@ -630,11 +670,11 @@ class FHIRFederatedClient(NumPyClient):
             return
         del self._model
         del self._tokenizer
-        self._model     = None
+        self._model = None
         self._tokenizer = None
-        gc.collect()               # force Python GC to release cyclic references
-        torch.cuda.synchronize()   # wait for all pending CUDA operations
-        torch.cuda.empty_cache()   # return reserved VRAM to the driver
+        gc.collect()  # force Python GC to release cyclic references
+        torch.cuda.synchronize()  # wait for all pending CUDA operations
+        torch.cuda.empty_cache()  # return reserved VRAM to the driver
         log.info("Model unloaded from VRAM.")
 
     def _ensure_data(self) -> None:
@@ -652,15 +692,23 @@ class FHIRFederatedClient(NumPyClient):
             return
 
         import time as _time
-        _MAX_WAIT   = 600   # seconds — 10 min total
-        _BASE_DELAY = 10    # seconds — initial wait
-        waited      = 0
+
+        _MAX_WAIT = 600  # seconds — 10 min total
+        _BASE_DELAY = 10  # seconds — initial wait
+        waited = 0
 
         while True:
-            log.info("Fetching FHIR data from %s (partition=%d)...", self.fhir_url, self.partition_id)
+            log.info(
+                "Fetching FHIR data from %s (partition=%d)...",
+                self.fhir_url,
+                self.partition_id,
+            )
 
             if self._backend == "llm-summarization":
-                from ai_client.fhir_consumer_summarization import fetch_summarization_examples
+                from ai_client.fhir_consumer_summarization import (
+                    fetch_summarization_examples,
+                )
+
                 examples, stats = fetch_summarization_examples(self.fhir_url)
             else:
                 examples, stats = fetch_training_examples(self.fhir_url)
@@ -675,7 +723,10 @@ class FHIRFederatedClient(NumPyClient):
                 delay = min(_BASE_DELAY * (2 ** (waited // _BASE_DELAY)), 60)
                 log.warning(
                     "FHIR returned 0 examples — waiting %ds before retry "
-                    "(total waited: %ds/%ds)...", delay, waited, _MAX_WAIT,
+                    "(total waited: %ds/%ds)...",
+                    delay,
+                    waited,
+                    _MAX_WAIT,
                 )
                 _time.sleep(delay)
                 waited += delay
@@ -684,9 +735,11 @@ class FHIRFederatedClient(NumPyClient):
             break
 
         if not examples:
-            log.warning("No examples available — client will operate without local data.")
+            log.warning(
+                "No examples available — client will operate without local data."
+            )
             self._train_examples = []
-            self._eval_examples  = []
+            self._eval_examples = []
             return
 
         # Filter by partition if specified
@@ -696,13 +749,19 @@ class FHIRFederatedClient(NumPyClient):
             # backward compatibility with older dataset versions.
             tag = f"partition_id={self.partition_id}"
             examples = [
-                ex for ex in examples
+                ex
+                for ex in examples
                 if tag in ex.partition_note or not ex.partition_note
             ]
-            log.info("After partition %d filter: %d examples.", self.partition_id, len(examples))
+            log.info(
+                "After partition %d filter: %d examples.",
+                self.partition_id,
+                len(examples),
+            )
 
         if _MAX_EXAMPLES > 0 and len(examples) > _MAX_EXAMPLES:
             import random as _random
+
             # Fixed seed for reproducibility across runs on the same partition.
             # Ensures the same subset is sampled regardless of when _ensure_data
             # is called, preventing unstable train/eval splits between rounds.
@@ -721,18 +780,29 @@ class FHIRFederatedClient(NumPyClient):
             _lp = os.getenv("BERT_LABEL_INDEX_PATH", "")
             if _lp and os.path.exists(_lp):
                 import json as _json
+
                 with open(_lp) as _f:
                     _full_idx = _json.load(_f)
                 if _BERT_BENCHMARK == "top50":
                     self._label_index = {k: v for k, v in _full_idx.items() if v < 50}
                 else:
                     self._label_index = _full_idx
-                log.info("BERT label index: %d labels (benchmark=%s).", len(self._label_index), _BERT_BENCHMARK)
+                log.info(
+                    "BERT label index: %d labels (benchmark=%s).",
+                    len(self._label_index),
+                    _BERT_BENCHMARK,
+                )
             else:
                 from ai_client.fhir_consumer_bert import build_label_index
+
                 all_examples = self._train_examples + self._eval_examples
-                self._label_index = build_label_index(all_examples, benchmark=_BERT_BENCHMARK)
-                log.info("BERT label index (local fallback): %d ICD-10 labels.", len(self._label_index))
+                self._label_index = build_label_index(
+                    all_examples, benchmark=_BERT_BENCHMARK
+                )
+                log.info(
+                    "BERT label index (local fallback): %d ICD-10 labels.",
+                    len(self._label_index),
+                )
 
     # ── NumPyClient interface ─────────────────────────────────────────────────
 
@@ -751,6 +821,7 @@ class FHIRFederatedClient(NumPyClient):
             self._load_model()
             if self._backend == "bert":
                 from ai_client.model_setup_bert import get_bert_parameters
+
                 params = get_bert_parameters(self._model)
             else:
                 params = get_lora_parameters(self._model)
@@ -764,6 +835,7 @@ class FHIRFederatedClient(NumPyClient):
 
         if _LORA_COMPRESS and self._backend != "bert":
             from ai_client.turbocompress import compress_parameters
+
             params = compress_parameters(params, n_bits=_COMPRESS_BITS)
 
         return params
@@ -785,19 +857,23 @@ class FHIRFederatedClient(NumPyClient):
             (updated_parameters, num_train_examples, metrics)
         """
         server_round = int(config.get("server_round", 0))
-        proximal_mu  = float(config.get("proximal_mu", 0.01))
+        proximal_mu = float(config.get("proximal_mu", 0.01))
         learning_rate = float(config.get("learning_rate", 2e-4))
-        num_epochs    = int(config.get("num_epochs", 1))
+        num_epochs = int(config.get("num_epochs", 1))
         verify_effective_learning_rate(server_round, learning_rate)
 
         log.info(
             "fit — round %d | lr=%.2e | μ=%.4f | epochs=%d",
-            server_round, learning_rate, proximal_mu, num_epochs,
+            server_round,
+            learning_rate,
+            proximal_mu,
+            num_epochs,
         )
 
         # Decompress incoming global parameters if TurboQuant is enabled
         if _LORA_COMPRESS and self._backend != "bert":
             from ai_client.turbocompress import decompress_parameters
+
             parameters = decompress_parameters(parameters)
 
         # Fetch FHIR data outside the GPU lock — does not use VRAM
@@ -810,6 +886,7 @@ class FHIRFederatedClient(NumPyClient):
                 self._load_model()
                 if self._backend == "bert":
                     from ai_client.model_setup_bert import get_bert_parameters
+
                     empty_params = get_bert_parameters(self._model)
                 else:
                     empty_params = get_lora_parameters(self._model)
@@ -820,16 +897,18 @@ class FHIRFederatedClient(NumPyClient):
             return empty_params, 1, {"train_loss": float("nan")}
 
         train_cfg = TrainingConfig(
-            learning_rate        = learning_rate,
-            num_epochs           = num_epochs,
-            gradient_accum_steps = _GRADIENT_ACCUM_STEPS if _GRADIENT_ACCUM_STEPS > 0 else 8,
-            batch_size           = _BATCH_SIZE,
-            noise_multiplier     = _NOISE_MULTIPLIER,
-            max_grad_norm        = _MAX_GRAD_NORM,
-            target_delta         = _TARGET_DELTA,
-            dp_subsample_rate    = _DP_SUBSAMPLE_RATE,
-            calibrate_grad_norm  = _CALIBRATE_GRAD_NORM,
-            proximal_mu          = proximal_mu,
+            learning_rate=learning_rate,
+            num_epochs=num_epochs,
+            gradient_accum_steps=(
+                _GRADIENT_ACCUM_STEPS if _GRADIENT_ACCUM_STEPS > 0 else 8
+            ),
+            batch_size=_BATCH_SIZE,
+            noise_multiplier=_NOISE_MULTIPLIER,
+            max_grad_norm=_MAX_GRAD_NORM,
+            target_delta=_TARGET_DELTA,
+            dp_subsample_rate=_DP_SUBSAMPLE_RATE,
+            calibrate_grad_norm=_CALIBRATE_GRAD_NORM,
+            proximal_mu=proximal_mu,
         )
 
         # Load, train, and unload within the lock to serialize VRAM usage
@@ -844,34 +923,37 @@ class FHIRFederatedClient(NumPyClient):
                     set_bert_parameters,
                     train_bert_one_round,
                 )
+
                 set_bert_parameters(self._model, parameters)
                 bert_cfg = BertTrainingConfig(
-                    learning_rate        = learning_rate,
-                    num_epochs           = num_epochs,
-                    gradient_accum_steps = _GRADIENT_ACCUM_STEPS if _GRADIENT_ACCUM_STEPS > 0 else 8,
-                    batch_size           = _BATCH_SIZE,
-                    proximal_mu          = proximal_mu,
-                    noise_multiplier     = _NOISE_MULTIPLIER,
-                    max_grad_norm        = _MAX_GRAD_NORM,
-                    target_delta         = _TARGET_DELTA,
-                    dp_subsample_rate    = _DP_SUBSAMPLE_RATE,
+                    learning_rate=learning_rate,
+                    num_epochs=num_epochs,
+                    gradient_accum_steps=(
+                        _GRADIENT_ACCUM_STEPS if _GRADIENT_ACCUM_STEPS > 0 else 8
+                    ),
+                    batch_size=_BATCH_SIZE,
+                    proximal_mu=proximal_mu,
+                    noise_multiplier=_NOISE_MULTIPLIER,
+                    max_grad_norm=_MAX_GRAD_NORM,
+                    target_delta=_TARGET_DELTA,
+                    dp_subsample_rate=_DP_SUBSAMPLE_RATE,
                 )
                 updated_params, n_examples, metrics = train_bert_one_round(
-                    model        = self._model,
-                    tokenizer    = self._tokenizer,
-                    examples     = self._train_examples,
-                    label_index  = self._label_index or {},
-                    train_cfg    = bert_cfg,
-                    max_length   = self.max_length,
+                    model=self._model,
+                    tokenizer=self._tokenizer,
+                    examples=self._train_examples,
+                    label_index=self._label_index or {},
+                    train_cfg=bert_cfg,
+                    max_length=self.max_length,
                 )
             else:
                 set_lora_parameters(self._model, parameters)
                 updated_params, n_examples, metrics = train_one_round(
-                    model      = self._model,
-                    tokenizer  = self._tokenizer,
-                    examples   = self._train_examples,
-                    train_cfg  = train_cfg,
-                    max_length = self.max_length,
+                    model=self._model,
+                    tokenizer=self._tokenizer,
+                    examples=self._train_examples,
+                    train_cfg=train_cfg,
+                    max_length=self.max_length,
                 )
 
             # Local evaluation with post-training weights (model still in VRAM)
@@ -879,58 +961,80 @@ class FHIRFederatedClient(NumPyClient):
                 if self._backend == "bert":
                     import torch
                     from torch.utils.data import DataLoader
+
                     from ai_client.model_setup_bert import build_bert_dataset
+
                     device = next(self._model.parameters()).device
                     eval_ds = build_bert_dataset(
-                        self._eval_examples, self._label_index or {}, self._tokenizer,
-                        self.max_length, num_labels=self._model.num_labels,
+                        self._eval_examples,
+                        self._label_index or {},
+                        self._tokenizer,
+                        self.max_length,
+                        num_labels=self._model.num_labels,
                     )
                     eval_dl = DataLoader(eval_ds, batch_size=_BATCH_SIZE, shuffle=False)
                     self._model.eval()
                     total_loss = 0.0
                     with torch.no_grad():
                         for batch in eval_dl:
-                            input_ids  = batch["input_ids"].to(device)
-                            attn_mask  = batch["attention_mask"].to(device)
-                            labels_b   = batch["labels"].to(device)
-                            out = self._model(input_ids=input_ids, attention_mask=attn_mask, labels=labels_b)
+                            input_ids = batch["input_ids"].to(device)
+                            attn_mask = batch["attention_mask"].to(device)
+                            labels_b = batch["labels"].to(device)
+                            out = self._model(
+                                input_ids=input_ids,
+                                attention_mask=attn_mask,
+                                labels=labels_b,
+                            )
                             total_loss += out["loss"].item()
                     local_loss = total_loss / max(len(eval_dl), 1)
                     metrics["local_eval_loss"] = round(local_loss, 6)
-                    log.info("Local BERT eval (post-training): bce_loss=%.4f", local_loss)
+                    log.info(
+                        "Local BERT eval (post-training): bce_loss=%.4f", local_loss
+                    )
                 elif self._backend == "llm-summarization":
                     local_loss, _n_eval, local_metrics = _evaluate_summarization(
-                        model      = self._model,
-                        tokenizer  = self._tokenizer,
-                        examples   = self._eval_examples,
-                        max_length = self.max_length,
+                        model=self._model,
+                        tokenizer=self._tokenizer,
+                        examples=self._eval_examples,
+                        max_length=self.max_length,
                     )
-                    metrics["local_eval_loss"]    = local_loss
-                    metrics["local_rouge_1"]      = local_metrics.get("rouge_1", 0.0)
-                    metrics["local_rouge_l"]      = local_metrics.get("rouge_l", 0.0)
-                    metrics["local_bertscore_f1"] = local_metrics.get("bertscore_f1", 0.0)
+                    metrics["local_eval_loss"] = local_loss
+                    metrics["local_rouge_1"] = local_metrics.get("rouge_1", 0.0)
+                    metrics["local_rouge_l"] = local_metrics.get("rouge_l", 0.0)
+                    metrics["local_bertscore_f1"] = local_metrics.get(
+                        "bertscore_f1", 0.0
+                    )
                 else:
                     local_loss, _n_eval, local_metrics = _evaluate_local(
-                        model            = self._model,
-                        tokenizer        = self._tokenizer,
-                        examples         = self._eval_examples,
-                        max_length       = self.max_length,
-                        compute_accuracy = _EVAL_ACCURACY,
-                        top_k            = _TOP_K,
+                        model=self._model,
+                        tokenizer=self._tokenizer,
+                        examples=self._eval_examples,
+                        max_length=self.max_length,
+                        compute_accuracy=_EVAL_ACCURACY,
+                        top_k=_TOP_K,
                     )
-                    metrics["local_eval_loss"]       = round(local_loss, 6)
-                    metrics["local_eval_perplexity"] = local_metrics.get("eval_perplexity", 1.0)
+                    metrics["local_eval_loss"] = round(local_loss, 6)
+                    metrics["local_eval_perplexity"] = local_metrics.get(
+                        "eval_perplexity", 1.0
+                    )
                     for k, v in local_metrics.items():
-                        if k.startswith("eval_icd10") or k.startswith("eval_acc_") \
-                                or k.startswith("eval_recall_") or k.startswith("eval_prec_") \
-                                or k.startswith("eval_f1_"):
+                        if (
+                            k.startswith("eval_icd10")
+                            or k.startswith("eval_acc_")
+                            or k.startswith("eval_recall_")
+                            or k.startswith("eval_prec_")
+                            or k.startswith("eval_f1_")
+                        ):
                             metrics[f"local_{k}"] = v
                     log.info(
                         "Local eval (post-training): loss=%.4f | ppl=%.2f%s",
                         local_loss,
                         local_metrics.get("eval_perplexity", 1.0),
-                        f" | acc@1={local_metrics['eval_icd10_accuracy']:.2%}"
-                        if "eval_icd10_accuracy" in local_metrics else "",
+                        (
+                            f" | acc@1={local_metrics['eval_icd10_accuracy']:.2%}"
+                            if "eval_icd10_accuracy" in local_metrics
+                            else ""
+                        ),
                     )
 
             # Save LoRA checkpoint on the final round for post-training evaluation
@@ -940,15 +1044,20 @@ class FHIRFederatedClient(NumPyClient):
                     os.makedirs(_CHECKPOINT_DIR, exist_ok=True)
                     self._model.save_pretrained(_CHECKPOINT_DIR)
                     self._tokenizer.save_pretrained(_CHECKPOINT_DIR)
-                    log.info("Checkpoint saved to %s (round %d/%d)", _CHECKPOINT_DIR, server_round, num_rounds)
+                    log.info(
+                        "Checkpoint saved to %s (round %d/%d)",
+                        _CHECKPOINT_DIR,
+                        server_round,
+                        num_rounds,
+                    )
                 except Exception as exc:
                     log.warning("Checkpoint save failed: %s", exc)
 
             self._unload_model()
 
-        metrics["server_round"]  = float(server_round)
-        metrics["partition_id"]  = float(self.partition_id)
-        metrics["proximal_mu"]   = proximal_mu
+        metrics["server_round"] = float(server_round)
+        metrics["partition_id"] = float(self.partition_id)
+        metrics["proximal_mu"] = proximal_mu
 
         # Rename dp_epsilon → epsilon_spent for experiment JSON schema consistency
         if "dp_epsilon" in metrics:
@@ -961,9 +1070,11 @@ class FHIRFederatedClient(NumPyClient):
         if dp_steps_this_round > 0:
             self._dp_total_steps += dp_steps_this_round
             if self._dp_noise_multiplier == 0.0:
-                self._dp_noise_multiplier = float(metrics.get("dp_noise_multiplier", 0.0))
-                self._dp_sample_rate      = float(metrics.get("dp_sample_rate", 1.0))
-                self._dp_target_delta     = float(metrics.get("dp_delta", 1e-5))
+                self._dp_noise_multiplier = float(
+                    metrics.get("dp_noise_multiplier", 0.0)
+                )
+                self._dp_sample_rate = float(metrics.get("dp_sample_rate", 1.0))
+                self._dp_target_delta = float(metrics.get("dp_delta", 1e-5))
             epsilon_cum = _compute_cumulative_epsilon(
                 self._dp_noise_multiplier,
                 self._dp_sample_rate,
@@ -971,10 +1082,12 @@ class FHIRFederatedClient(NumPyClient):
                 self._dp_target_delta,
             )
             metrics["epsilon_cumulative"] = round(epsilon_cum, 4)
-            metrics["dp_total_steps"]     = self._dp_total_steps
+            metrics["dp_total_steps"] = self._dp_total_steps
             log.info(
                 "DP cumulative: ε=%.4f (total_steps=%d across %d rounds so far)",
-                epsilon_cum, self._dp_total_steps, server_round,
+                epsilon_cum,
+                self._dp_total_steps,
+                server_round,
             )
 
         # Fase 0 instrumentation: write the per-round grad-norm JSONL record
@@ -983,11 +1096,14 @@ class FHIRFederatedClient(NumPyClient):
         # this fit() actually trained (not the "no data" early-return path).
         if _grad_norm_logging_enabled() and "grad_norms_pre_clip" in metrics:
             import json as _json
+
             GradNormLogger().log_round(
                 server_round=server_round,
                 partition_id=self.partition_id,
                 grad_norms_pre_clip=_json.loads(metrics.pop("grad_norms_pre_clip")),
-                grad_norms_post_clip_noise=_json.loads(metrics.pop("grad_norms_post_clip_noise")),
+                grad_norms_post_clip_noise=_json.loads(
+                    metrics.pop("grad_norms_post_clip_noise")
+                ),
                 clip_thresholds=metrics.pop("clip_threshold", None),
                 learning_rate=metrics.pop("effective_lr", learning_rate),
                 epsilon_cumulative=metrics.get("epsilon_cumulative"),
@@ -998,20 +1114,26 @@ class FHIRFederatedClient(NumPyClient):
             "fit round %d | silo=%d | exemplos=%d | loss=%.4f | ppl=%.2f | "
             "lora_b_norm_end=%.6f | drift_ratio=%.2fx | "
             "local_eval_loss=%.4f | local_eval_ppl=%.2f%s",
-            server_round, self.partition_id, n_examples,
+            server_round,
+            self.partition_id,
+            n_examples,
             metrics.get("train_loss", float("nan")),
             metrics.get("train_perplexity", float("nan")),
             metrics.get("lora_b_norm_end", float("nan")),
             metrics.get("lora_b_drift_ratio", float("nan")),
             metrics.get("local_eval_loss", float("nan")),
             metrics.get("local_eval_perplexity", float("nan")),
-            f" | local_acc={metrics['local_eval_icd10_accuracy']:.2%}"
-            if "local_eval_icd10_accuracy" in metrics else "",
+            (
+                f" | local_acc={metrics['local_eval_icd10_accuracy']:.2%}"
+                if "local_eval_icd10_accuracy" in metrics
+                else ""
+            ),
         )
 
         # Compress outgoing LoRA delta before gRPC transmission
         if _LORA_COMPRESS and self._backend != "bert":
             from ai_client.turbocompress import compress_parameters
+
             updated_params = compress_parameters(updated_params, n_bits=_COMPRESS_BITS)
 
         return updated_params, n_examples, metrics
@@ -1037,14 +1159,17 @@ class FHIRFederatedClient(NumPyClient):
         For MODEL_BACKEND=llm-summarization: returns ROUGE-1/2/L + BERTScore.
         For MODEL_BACKEND=llm: returns eval_loss + perplexity + optional ICD-10 accuracy.
         """
-        server_round     = int(config.get("server_round", 0))
+        server_round = int(config.get("server_round", 0))
         compute_accuracy = bool(config.get("compute_accuracy", _EVAL_ACCURACY))
 
-        log.info("evaluate — round %d | compute_accuracy=%s", server_round, compute_accuracy)
+        log.info(
+            "evaluate — round %d | compute_accuracy=%s", server_round, compute_accuracy
+        )
 
         # Decompress incoming global parameters if TurboQuant is enabled
         if _LORA_COMPRESS and self._backend != "bert":
             from ai_client.turbocompress import decompress_parameters
+
             parameters = decompress_parameters(parameters)
 
         self._ensure_data()
@@ -1057,43 +1182,47 @@ class FHIRFederatedClient(NumPyClient):
             self._load_model()
 
             if self._backend == "bert":
-                import torch
                 from torch.utils.data import DataLoader
+
                 from ai_client.model_setup_bert import (
                     build_bert_dataset,
                     set_bert_parameters,
                 )
                 from evaluation.icd_metrics import evaluate_bert_model
+
                 set_bert_parameters(self._model, parameters)
                 device = next(self._model.parameters()).device
                 eval_ds = build_bert_dataset(
-                    self._eval_examples, self._label_index or {}, self._tokenizer,
-                    self.max_length, num_labels=self._model.num_labels,
+                    self._eval_examples,
+                    self._label_index or {},
+                    self._tokenizer,
+                    self.max_length,
+                    num_labels=self._model.num_labels,
                 )
                 eval_dl = DataLoader(eval_ds, batch_size=_BATCH_SIZE, shuffle=False)
                 bert_result = evaluate_bert_model(self._model, eval_dl, device)
-                loss     = bert_result.avg_loss
+                loss = bert_result.avg_loss
                 n_examples = len(eval_ds)
-                metrics  = bert_result.to_flat_dict()
+                metrics = bert_result.to_flat_dict()
 
             elif self._backend == "llm-summarization":
                 set_lora_parameters(self._model, parameters)
                 loss, n_examples, metrics = _evaluate_summarization(
-                    model      = self._model,
-                    tokenizer  = self._tokenizer,
-                    examples   = self._eval_examples,
-                    max_length = self.max_length,
+                    model=self._model,
+                    tokenizer=self._tokenizer,
+                    examples=self._eval_examples,
+                    max_length=self.max_length,
                 )
 
             else:
                 set_lora_parameters(self._model, parameters)
                 loss, n_examples, metrics = _evaluate_local(
-                    model            = self._model,
-                    tokenizer        = self._tokenizer,
-                    examples         = self._eval_examples,
-                    max_length       = self.max_length,
-                    compute_accuracy = compute_accuracy,
-                    top_k            = _TOP_K,
+                    model=self._model,
+                    tokenizer=self._tokenizer,
+                    examples=self._eval_examples,
+                    max_length=self.max_length,
+                    compute_accuracy=compute_accuracy,
+                    top_k=_TOP_K,
                 )
 
             self._unload_model()
@@ -1103,11 +1232,23 @@ class FHIRFederatedClient(NumPyClient):
 
         log.info(
             "evaluate round %d | silo=%d | n=%d | loss=%.4f%s",
-            server_round, self.partition_id, n_examples, loss,
-            f" | ppl={metrics['eval_perplexity']:.2f}" if "eval_perplexity" in metrics
-            else f" | rouge_l={metrics.get('rouge_l', 0.0):.4f}" if "rouge_l" in metrics
-            else f" | micro_f1={metrics.get('micro_f1', 0.0):.4f}" if "micro_f1" in metrics
-            else "",
+            server_round,
+            self.partition_id,
+            n_examples,
+            loss,
+            (
+                f" | ppl={metrics['eval_perplexity']:.2f}"
+                if "eval_perplexity" in metrics
+                else (
+                    f" | rouge_l={metrics.get('rouge_l', 0.0):.4f}"
+                    if "rouge_l" in metrics
+                    else (
+                        f" | micro_f1={metrics.get('micro_f1', 0.0):.4f}"
+                        if "micro_f1" in metrics
+                        else ""
+                    )
+                )
+            ),
         )
         return loss, n_examples, metrics
 
@@ -1116,15 +1257,18 @@ class FHIRFederatedClient(NumPyClient):
     def get_properties(self, config: dict[str, Scalar]) -> dict[str, Scalar]:
         """Reports client metadata to the server (optional)."""
         return {
-            "model_name":   self.model_name,
+            "model_name": self.model_name,
             "partition_id": float(self.partition_id),
-            "fhir_url":     self.fhir_url,
-            "has_gpu":      float(torch.cuda.is_available()),
-            "gpu_name":     torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu",
+            "fhir_url": self.fhir_url,
+            "has_gpu": float(torch.cuda.is_available()),
+            "gpu_name": (
+                torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu"
+            ),
         }
 
 
 # ── ClientApp (Flower 1.x modern API) ────────────────────────────────────────
+
 
 def client_fn(context: Context) -> fl.client.Client:
     """
@@ -1134,14 +1278,14 @@ def client_fn(context: Context) -> fl.client.Client:
     Hyperparameters are read from `context.run_config` with fallback
     to environment variables.
     """
-    run_cfg      = context.run_config if hasattr(context, "run_config") else {}
+    run_cfg = context.run_config if hasattr(context, "run_config") else {}
     partition_id = int(context.node_config.get("partition-id", _PARTITION_ID))
 
     client = FHIRFederatedClient(
-        fhir_url     = str(run_cfg.get("fhir_url",    _FHIR_URL)),
-        model_name   = str(run_cfg.get("model_name",  _MODEL_NAME)),
-        partition_id = partition_id,
-        max_length   = int(run_cfg.get("max_length",  _MAX_SEQ_LEN)),
+        fhir_url=str(run_cfg.get("fhir_url", _FHIR_URL)),
+        model_name=str(run_cfg.get("model_name", _MODEL_NAME)),
+        partition_id=partition_id,
+        max_length=int(run_cfg.get("max_length", _MAX_SEQ_LEN)),
     )
     return client.to_client()
 
@@ -1152,21 +1296,30 @@ app = ClientApp(client_fn=client_fn)
 
 # ── Legacy entry point (start_numpy_client) ───────────────────────────────────
 
+
 def main() -> None:
+    """Legacy ``start_numpy_client`` entry point (SuperNode uses the ClientApp)."""
     logging.basicConfig(
-        level   = logging.INFO,
-        format  = "%(asctime)s [%(levelname)s] %(name)s — %(message)s",
-        datefmt = "%Y-%m-%dT%H:%M:%S",
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S",
     )
 
     log.info("=== FL Client starting ===")
     log.info(
         "FHIR: %s | Flower server: %s | Partition: %d | Model: %s | Backend: %s",
-        _FHIR_URL, _FL_ADDRESS, _PARTITION_ID, _MODEL_NAME, _MODEL_BACKEND,
+        _FHIR_URL,
+        _FL_ADDRESS,
+        _PARTITION_ID,
+        _MODEL_NAME,
+        _MODEL_BACKEND,
     )
     log.info(
         "DP: σ=%.2f | δ=%s | q=%.3f | calibrate=%s",
-        _NOISE_MULTIPLIER, _TARGET_DELTA, _DP_SUBSAMPLE_RATE, _CALIBRATE_GRAD_NORM,
+        _NOISE_MULTIPLIER,
+        _TARGET_DELTA,
+        _DP_SUBSAMPLE_RATE,
+        _CALIBRATE_GRAD_NORM,
     )
     if _NOISE_MULTIPLIER > 0:
         log.info(
@@ -1186,20 +1339,23 @@ def main() -> None:
         log.info("TurboQuant compression disabled (FL_LORA_COMPRESS=false).")
 
     client = FHIRFederatedClient(
-        fhir_url     = _FHIR_URL,
-        model_name   = _MODEL_NAME,
-        partition_id = _PARTITION_ID,
-        max_length   = _MAX_SEQ_LEN,
+        fhir_url=_FHIR_URL,
+        model_name=_MODEL_NAME,
+        partition_id=_PARTITION_ID,
+        max_length=_MAX_SEQ_LEN,
     )
 
-    log.info("FL network mode: %s", "SIMULATED (insecure loopback)" if _IS_SIMULATED else "REAL (TLS)")
+    log.info(
+        "FL network mode: %s",
+        "SIMULATED (insecure loopback)" if _IS_SIMULATED else "REAL (TLS)",
+    )
 
     if _IS_SIMULATED:
         start_client(
-            server_address         = _FL_ADDRESS,
-            client                 = client.to_client(),
-            grpc_max_message_length = 512 * 1024 * 1024,   # 512 MB — LLM weights
-            insecure               = True,
+            server_address=_FL_ADDRESS,
+            client=client.to_client(),
+            grpc_max_message_length=512 * 1024 * 1024,  # 512 MB — LLM weights
+            insecure=True,
         )
     else:
         root_certificates = None
@@ -1207,11 +1363,11 @@ def main() -> None:
             with open(_CA_CERT_PATH, "rb") as f:
                 root_certificates = f.read()
         start_client(
-            server_address         = _FL_ADDRESS,
-            client                 = client.to_client(),
-            grpc_max_message_length = 512 * 1024 * 1024,   # 512 MB — LLM weights
-            insecure               = False,
-            root_certificates      = root_certificates,
+            server_address=_FL_ADDRESS,
+            client=client.to_client(),
+            grpc_max_message_length=512 * 1024 * 1024,  # 512 MB — LLM weights
+            insecure=False,
+            root_certificates=root_certificates,
         )
 
 

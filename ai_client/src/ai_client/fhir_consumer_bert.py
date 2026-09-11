@@ -18,7 +18,6 @@ import logging
 import os
 from collections import Counter
 from pathlib import Path
-from typing import Any
 
 from ai_client.fhir_consumer import TrainingExample, fetch_training_examples
 
@@ -107,6 +106,7 @@ def fetch_bert_training_data(
         (examples, label_index) where label_index is the ICD-10 vocabulary.
     """
     import random as _random
+
     examples, stats = fetch_training_examples(fhir_url)
 
     if stats.warnings:
@@ -115,7 +115,9 @@ def fetch_bert_training_data(
 
     if partition_id >= 0:
         tag = f"partition_id={partition_id}"
-        examples = [ex for ex in examples if tag in ex.partition_note or not ex.partition_note]
+        examples = [
+            ex for ex in examples if tag in ex.partition_note or not ex.partition_note
+        ]
         log.info("Partition %d: %d examples.", partition_id, len(examples))
 
     if max_examples > 0 and len(examples) > max_examples:

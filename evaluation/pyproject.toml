@@ -1,7 +1,7 @@
 [project]
 name = "evaluation"
 version = "0.1.0"
-description = "Add your description here"
+description = "Evaluation suite — ICD-10 coding metrics, summarization metrics, LLM-as-judge, statistical analysis"
 readme = "README.md"
 authors = [
     { name = "Anonymous", email = "anonymous@review.placeholder" }
@@ -19,7 +19,7 @@ dependencies = [
 ]
 
 [project.scripts]
-evaluation = "evaluation:main"
+evaluation = "evaluation.post_eval:main"
 
 [build-system]
 requires = ["uv_build>=0.11.2,<0.12.0"]

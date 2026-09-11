@@ -28,12 +28,13 @@ log = logging.getLogger(__name__)
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-ICD10_SYSTEM      = "http://hl7.org/fhir/sid/icd-10"
-LOINC_SYSTEM      = "http://loinc.org"
-_DEFAULT_PAGE_SIZE = 50          # _count per page in FHIR searches
-_REQUEST_TIMEOUT   = 30          # seconds
+ICD10_SYSTEM = "http://hl7.org/fhir/sid/icd-10"
+LOINC_SYSTEM = "http://loinc.org"
+_DEFAULT_PAGE_SIZE = 50  # _count per page in FHIR searches
+_REQUEST_TIMEOUT = 30  # seconds
 
 # ── Data model ────────────────────────────────────────────────────────────────
+
 
 @dataclass
 class TrainingExample:
@@ -51,14 +52,15 @@ class TrainingExample:
         all_icd10_codes:  All ICD-10 codes for the admission (multi-label evaluation).
                           Empty = use only icd10_code as ground truth in evaluation.
     """
-    patient_ref:      str
-    clinical_text:    str
-    icd10_code:       str
-    icd10_display:    str
-    condition_id:     str = ""
-    doc_ref_id:       str = ""
-    partition_note:   str = ""
-    all_icd10_codes:  list[str] = field(default_factory=list)
+
+    patient_ref: str
+    clinical_text: str
+    icd10_code: str
+    icd10_display: str
+    condition_id: str = ""
+    doc_ref_id: str = ""
+    partition_note: str = ""
+    all_icd10_codes: list[str] = field(default_factory=list)
 
     def to_prompt(self) -> str:
         """
@@ -81,17 +83,19 @@ class TrainingExample:
 @dataclass
 class FHIRConsumerStats:
     """Statistics from the last `fetch_training_examples` run."""
-    conditions_fetched:      int = 0
-    doc_refs_fetched:        int = 0
-    examples_paired:         int = 0
-    conditions_no_icd10:     int = 0
-    doc_refs_no_text:        int = 0
-    patients_with_both:      int = 0
-    non_clinical_filtered:   int = 0
-    warnings:                list[str] = field(default_factory=list)
+
+    conditions_fetched: int = 0
+    doc_refs_fetched: int = 0
+    examples_paired: int = 0
+    conditions_no_icd10: int = 0
+    doc_refs_no_text: int = 0
+    patients_with_both: int = 0
+    non_clinical_filtered: int = 0
+    warnings: list[str] = field(default_factory=list)
 
 
 # ── FHIR pagination ───────────────────────────────────────────────────────────
+
 
 def _next_link(bundle: dict[str, Any]) -> str | None:
     """Extracts the next-page URL from a searchset Bundle, or None."""
@@ -143,6 +147,7 @@ def _iter_bundle_entries(
 
 # ── Condition extraction ──────────────────────────────────────────────────────
 
+
 def _extract_icd10(condition: dict[str, Any]) -> tuple[str, str] | None:
     """
     Extracts (code, display) ICD-10 from the coding array of a Condition.
@@ -192,7 +197,9 @@ def get_conditions(
         params["subject"] = f"Patient/{patient_id}"
 
     endpoint = f"{fhir_url.rstrip('/')}/Condition"
-    log.info("Fetching Conditions from %s (patient_id=%s)...", endpoint, patient_id or "all")
+    log.info(
+        "Fetching Conditions from %s (patient_id=%s)...", endpoint, patient_id or "all"
+    )
 
     raw = _iter_bundle_entries(sess, endpoint, params)
     log.info("  → %d Condition(s) returned", len(raw))
@@ -219,7 +226,11 @@ def get_conditions(
         # Extract all_codes from note: "partition_id=X label=Y all_codes=I10,I11.9,E11.9"
         note_fields = _parse_note_field(note_text)
         all_codes_str = note_fields.get("all_codes", "")
-        all_codes = [c.strip() for c in all_codes_str.split(",") if c.strip()] if all_codes_str else []
+        all_codes = (
+            [c.strip() for c in all_codes_str.split(",") if c.strip()]
+            if all_codes_str
+            else []
+        )
         if not all_codes:
             all_codes = [icd[0]]  # fallback: primary code only
 
@@ -229,6 +240,7 @@ def get_conditions(
 
 
 # ── DocumentReference extraction ─────────────────────────────────────────────
+
 
 def _decode_attachment(content_list: list[dict]) -> str | None:
     """
@@ -272,7 +284,11 @@ def get_document_references(
         params["subject"] = f"Patient/{patient_id}"
 
     endpoint = f"{fhir_url.rstrip('/')}/DocumentReference"
-    log.info("Fetching DocumentReferences from %s (patient_id=%s)...", endpoint, patient_id or "all")
+    log.info(
+        "Fetching DocumentReferences from %s (patient_id=%s)...",
+        endpoint,
+        patient_id or "all",
+    )
 
     raw = _iter_bundle_entries(sess, endpoint, params)
     log.info("  → %d DocumentReference(s) returned", len(raw))
@@ -287,7 +303,10 @@ def get_document_references(
 
         text = _decode_attachment(doc.get("content", []))
         if text is None:
-            log.debug("DocumentReference %s has no decodeable attachment — skipped.", doc.get("id", "?"))
+            log.debug(
+                "DocumentReference %s has no decodeable attachment — skipped.",
+                doc.get("id", "?"),
+            )
             continue
 
         result[subj] = (doc.get("id", ""), text)
@@ -324,6 +343,7 @@ def _is_clinical_text(text: str) -> bool:
 
 # ── Join into training examples ───────────────────────────────────────────────
 
+
 def fetch_training_examples(
     fhir_url: str,
     patient_id: str | None = None,
@@ -347,13 +367,15 @@ def fetch_training_examples(
     stats = FHIRConsumerStats()
     examples: list[TrainingExample] = []
 
-    with httpx.Client(headers={
-        "Accept": "application/fhir+json",
-        "Content-Type": "application/fhir+json",
-    }) as session:
+    with httpx.Client(
+        headers={
+            "Accept": "application/fhir+json",
+            "Content-Type": "application/fhir+json",
+        }
+    ) as session:
         try:
-            conditions  = get_conditions(fhir_url, patient_id, session)
-            doc_refs    = get_document_references(fhir_url, patient_id, session)
+            conditions = get_conditions(fhir_url, patient_id, session)
+            doc_refs = get_document_references(fhir_url, patient_id, session)
         except httpx.ConnectError:
             msg = f"No connection to FHIR at {fhir_url}. Check that the fhir server is running."
             log.error(msg)
@@ -366,19 +388,19 @@ def fetch_training_examples(
             return [], stats
 
     stats.conditions_fetched = len(conditions)
-    stats.doc_refs_fetched   = len(doc_refs)
+    stats.doc_refs_fetched = len(doc_refs)
 
     # Coverage diagnostics
-    only_conditions  = set(conditions) - set(doc_refs)
-    only_doc_refs    = set(doc_refs)   - set(conditions)
-    both             = set(conditions) & set(doc_refs)
+    only_conditions = set(conditions) - set(doc_refs)
+    only_doc_refs = set(doc_refs) - set(conditions)
+    both = set(conditions) & set(doc_refs)
 
-    stats.patients_with_both    = len(both)
-    stats.conditions_no_icd10   = 0   # already filtered in get_conditions
-    stats.doc_refs_no_text      = 0   # already filtered in get_document_references
+    stats.patients_with_both = len(both)
+    stats.conditions_no_icd10 = 0  # already filtered in get_conditions
+    stats.doc_refs_no_text = 0  # already filtered in get_document_references
 
     if only_conditions:
-        w = f"{len(only_conditions)} patient(s) with Condition but no DocumentReference: {sorted(only_conditions)[:5]}..."
+        w = f"{len(only_conditions)} patient(s) with Condition but no DocumentReference: {sorted(only_conditions)[:5]}..."  # noqa: E501
         log.warning(w)
         stats.warnings.append(w)
     if only_doc_refs:
@@ -388,38 +410,51 @@ def fetch_training_examples(
 
     # Build examples
     for patient_ref in sorted(both):
-        cond_id, icd10_code, icd10_display, note_text, all_codes = conditions[patient_ref]
-        doc_id,  clinical_text                                    = doc_refs[patient_ref]
+        cond_id, icd10_code, icd10_display, note_text, all_codes = conditions[
+            patient_ref
+        ]
+        doc_id, clinical_text = doc_refs[patient_ref]
 
         if len(clinical_text.strip()) < min_text_length:
-            log.debug("Text too short for %s (%d chars) — skipped.", patient_ref, len(clinical_text))
+            log.debug(
+                "Text too short for %s (%d chars) — skipped.",
+                patient_ref,
+                len(clinical_text),
+            )
             continue
 
         if not _is_clinical_text(clinical_text):
-            log.debug("Non-clinical text discarded for %s — possible lab result.", patient_ref)
+            log.debug(
+                "Non-clinical text discarded for %s — possible lab result.", patient_ref
+            )
             stats.non_clinical_filtered += 1
             continue
 
-        examples.append(TrainingExample(
-            patient_ref     = patient_ref,
-            clinical_text   = clinical_text,
-            icd10_code      = icd10_code,
-            icd10_display   = icd10_display,
-            condition_id    = cond_id,
-            doc_ref_id      = doc_id,
-            partition_note  = note_text,
-            all_icd10_codes = all_codes,
-        ))
+        examples.append(
+            TrainingExample(
+                patient_ref=patient_ref,
+                clinical_text=clinical_text,
+                icd10_code=icd10_code,
+                icd10_display=icd10_display,
+                condition_id=cond_id,
+                doc_ref_id=doc_id,
+                partition_note=note_text,
+                all_icd10_codes=all_codes,
+            )
+        )
 
     stats.examples_paired = len(examples)
     log.info(
         "Pairing complete: %d/%d patients with both resources → %d training examples.",
-        len(both), max(len(conditions), len(doc_refs), 1), len(examples),
+        len(both),
+        max(len(conditions), len(doc_refs), 1),
+        len(examples),
     )
     return examples, stats
 
 
 # ── Diagnostic CLI ────────────────────────────────────────────────────────────
+
 
 def _cli() -> None:
     logging.basicConfig(
@@ -435,7 +470,9 @@ def _cli() -> None:
         help="FHIR R4 server base URL.",
     )
     parser.add_argument("--patient-id", default=None, help="Filter by Patient.id.")
-    parser.add_argument("--show-prompts", action="store_true", help="Display formatted prompts.")
+    parser.add_argument(
+        "--show-prompts", action="store_true", help="Display formatted prompts."
+    )
     args = parser.parse_args()
 
     examples, stats = fetch_training_examples(args.fhir_url, args.patient_id)

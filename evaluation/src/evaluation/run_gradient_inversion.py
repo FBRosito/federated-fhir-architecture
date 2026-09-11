@@ -35,9 +35,9 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-_DEFAULT_FHIR_URL   = os.getenv("FHIR_SERVER_URL", "http://localhost:8080/fhir")
+_DEFAULT_FHIR_URL = os.getenv("FHIR_SERVER_URL", "http://localhost:8080/fhir")
 _DEFAULT_BASE_MODEL = os.getenv("MODEL_NAME", "meta-llama/Llama-3.2-1B")
-_DEFAULT_MAX_LEN    = int(os.getenv("MAX_SEQ_LEN", "512"))
+_DEFAULT_MAX_LEN = int(os.getenv("MAX_SEQ_LEN", "512"))
 
 
 def _load_fresh_model(base_model_name: str, max_seq_len: int):
@@ -49,10 +49,12 @@ def _load_fresh_model(base_model_name: str, max_seq_len: int):
     """
     try:
         import torch
-        from transformers import AutoTokenizer, BitsAndBytesConfig, AutoModelForCausalLM
-        from peft import get_peft_model, LoraConfig, TaskType
+        from peft import LoraConfig, TaskType, get_peft_model
+        from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
     except ImportError as e:
-        raise ImportError(f"Missing dependency: {e}. Install transformers, peft, bitsandbytes.")
+        raise ImportError(
+            f"Missing dependency: {e}. Install transformers, peft, bitsandbytes."
+        )
 
     log.info("Loading fresh model %s (NF4 4-bit) for DLG attack...", base_model_name)
     bnb_config = BitsAndBytesConfig(
@@ -77,8 +79,15 @@ def _load_fresh_model(base_model_name: str, max_seq_len: int):
     lora_config = LoraConfig(
         r=16,
         lora_alpha=32,
-        target_modules=["q_proj", "v_proj", "k_proj", "o_proj",
-                        "gate_proj", "up_proj", "down_proj"],
+        target_modules=[
+            "q_proj",
+            "v_proj",
+            "k_proj",
+            "o_proj",
+            "gate_proj",
+            "up_proj",
+            "down_proj",
+        ],
         lora_dropout=0.05,
         bias="none",
         task_type=TaskType.CAUSAL_LM,
@@ -115,7 +124,7 @@ def run_attack_suite(
     Returns:
         Results dict (also written to output_path).
     """
-    from evaluation.gradient_inversion import run_dlg_attack, GradientInversionResult
+    from evaluation.gradient_inversion import GradientInversionResult, run_dlg_attack
 
     if sigma_values is None:
         sigma_values = [0.0, 0.5, 1.0, 2.0]
@@ -124,6 +133,7 @@ def run_attack_suite(
     log.info("Fetching %d clinical text samples from %s...", n_samples, fhir_url)
     try:
         from ai_client.fhir_consumer import fetch_training_examples
+
         examples, stats = fetch_training_examples(fhir_url, max_examples=n_samples)
     except Exception as exc:
         log.error("Failed to fetch FHIR examples: %s", exc)
@@ -147,8 +157,12 @@ def run_attack_suite(
 
     for sigma in sigma_values:
         log.info("=" * 60)
-        log.info("Running DLG attack with σ=%.2f (%d samples, %d iterations)...",
-                 sigma, len(original_texts), n_iterations)
+        log.info(
+            "Running DLG attack with σ=%.2f (%d samples, %d iterations)...",
+            sigma,
+            len(original_texts),
+            n_iterations,
+        )
 
         sigma_start = time.perf_counter()
         attack_result: GradientInversionResult = run_dlg_attack(
@@ -162,19 +176,19 @@ def run_attack_suite(
         sigma_elapsed = time.perf_counter() - sigma_start
 
         results_by_sigma[f"sigma_{sigma:.2f}"] = {
-            "sigma":              sigma,
-            "n_samples":          len(original_texts),
-            "n_iterations":       n_iterations,
-            "elapsed_s":          round(sigma_elapsed, 2),
-            "mean_rouge1":        round(attack_result.mean_rouge1, 4),
-            "mean_bertscore_f1":  round(attack_result.mean_bertscore_f1, 4),
-            "mean_dlg_loss":      round(attack_result.mean_dlg_loss, 6),
-            "per_sample":         [
+            "sigma": sigma,
+            "n_samples": len(original_texts),
+            "n_iterations": n_iterations,
+            "elapsed_s": round(sigma_elapsed, 2),
+            "mean_rouge1": round(attack_result.mean_rouge1, 4),
+            "mean_bertscore_f1": round(attack_result.mean_bertscore_f1, 4),
+            "mean_dlg_loss": round(attack_result.mean_dlg_loss, 6),
+            "per_sample": [
                 {
-                    "original_snippet":     s.original_text[:200],
+                    "original_snippet": s.original_text[:200],
                     "reconstructed_snippet": s.reconstructed_text[:200],
-                    "rouge1":               round(s.rouge1, 4),
-                    "bertscore_f1":         round(s.bertscore_f1, 4),
+                    "rouge1": round(s.rouge1, 4),
+                    "bertscore_f1": round(s.bertscore_f1, 4),
                 }
                 for s in attack_result.per_sample
             ],
@@ -191,7 +205,7 @@ def run_attack_suite(
     total_elapsed = time.perf_counter() - overall_start
 
     # ── Compute DP protection gain ──
-    no_dp   = results_by_sigma.get("sigma_0.00", {})
+    no_dp = results_by_sigma.get("sigma_0.00", {})
     best_dp = min(
         (v for k, v in results_by_sigma.items() if k != "sigma_0.00"),
         key=lambda v: v.get("mean_rouge1", 1.0),
@@ -202,37 +216,42 @@ def run_attack_suite(
         r1_reduction = no_dp["mean_rouge1"] - best_dp["mean_rouge1"]
         bs_reduction = no_dp["mean_bertscore_f1"] - best_dp["mean_bertscore_f1"]
         protection_summary = {
-            "rouge1_reduction_vs_no_dp":     round(r1_reduction, 4),
-            "bertscore_reduction_vs_no_dp":  round(bs_reduction, 4),
-            "best_sigma":                    best_dp["sigma"],
+            "rouge1_reduction_vs_no_dp": round(r1_reduction, 4),
+            "bertscore_reduction_vs_no_dp": round(bs_reduction, 4),
+            "best_sigma": best_dp["sigma"],
         }
         log.info(
             "DP protection: ROUGE-1 reduced by %.4f | BERTScore-F1 reduced by %.4f "
             "(σ=0 vs σ=%.2f)",
-            r1_reduction, bs_reduction, best_dp["sigma"],
+            r1_reduction,
+            bs_reduction,
+            best_dp["sigma"],
         )
 
     output = {
-        "experiment":        "gradient_inversion",
-        "fhir_url":          fhir_url,
-        "base_model":        base_model_name,
-        "sigma_values":      sigma_values,
-        "n_samples":         len(original_texts),
-        "n_iterations":      n_iterations,
-        "total_elapsed_s":   round(total_elapsed, 2),
+        "experiment": "gradient_inversion",
+        "fhir_url": fhir_url,
+        "base_model": base_model_name,
+        "sigma_values": sigma_values,
+        "n_samples": len(original_texts),
+        "n_iterations": n_iterations,
+        "total_elapsed_s": round(total_elapsed, 2),
         "protection_summary": protection_summary,
-        "results_by_sigma":  results_by_sigma,
+        "results_by_sigma": results_by_sigma,
     }
 
     out_path = Path(output_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(output, indent=2, ensure_ascii=False), encoding="utf-8")
+    out_path.write_text(
+        json.dumps(output, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
     log.info("Gradient inversion results saved to: %s", out_path)
 
     return output
 
 
 def main() -> None:
+    """CLI entry point: run the DLG gradient-inversion security evaluation."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",

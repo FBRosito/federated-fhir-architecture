@@ -31,20 +31,17 @@ import random
 import flwr as fl
 import numpy as np
 import torch
-from flwr.client import ClientApp, start_client
-from flwr.common import Context, NDArrays, Scalar
-
 from article3.dual_training import (
+    _load_local_adapter,
     dual_train_bert_one_round,
     evaluate_bert_model_fused,
     local_adapter_path,
-    _load_local_adapter,
 )
-from evaluation.grad_norm_logger import GradNormLogger
-from evaluation.metrics_logger import GPUTimer
+from flwr.client import ClientApp, start_client
+from flwr.common import Context, NDArrays, Scalar
+
 from ai_client.fl_client import (
     _BATCH_SIZE,
-    _CALIBRATE_GRAD_NORM,
     _CHECKPOINT_DIR,
     _DP_SUBSAMPLE_RATE,
     _FHIR_URL,
@@ -61,6 +58,8 @@ from ai_client.fl_client import (
     _gpu_lock,
     verify_effective_learning_rate,
 )
+from evaluation.grad_norm_logger import GradNormLogger
+from evaluation.metrics_logger import GPUTimer
 
 log = logging.getLogger(__name__)
 
@@ -77,6 +76,11 @@ class DualLoraClient(FHIRFederatedClient):
         parameters: NDArrays,
         config: dict[str, Scalar],
     ) -> tuple[NDArrays, int, dict[str, Scalar]]:
+        """Run one dual-adapter (global + local LoRA) training round.
+
+        Returns:
+            Flower ``fit`` triple: (updated parameters, num examples, metrics).
+        """
         server_round = int(config.get("server_round", 0))
         proximal_mu = float(config.get("proximal_mu", 0.01))
         learning_rate = float(config.get("learning_rate", 2e-4))
@@ -85,7 +89,10 @@ class DualLoraClient(FHIRFederatedClient):
 
         log.info(
             "fit — round %d | lr=%.2e | μ=%.4f | epochs=%d | lora_mode=dual",
-            server_round, learning_rate, proximal_mu, num_epochs,
+            server_round,
+            learning_rate,
+            proximal_mu,
+            num_epochs,
         )
 
         self._ensure_data()
@@ -103,7 +110,9 @@ class DualLoraClient(FHIRFederatedClient):
         bert_cfg = BertTrainingConfig(
             learning_rate=learning_rate,
             num_epochs=num_epochs,
-            gradient_accum_steps=_GRADIENT_ACCUM_STEPS if _GRADIENT_ACCUM_STEPS > 0 else 8,
+            gradient_accum_steps=(
+                _GRADIENT_ACCUM_STEPS if _GRADIENT_ACCUM_STEPS > 0 else 8
+            ),
             batch_size=_BATCH_SIZE,
             proximal_mu=proximal_mu,
             noise_multiplier=_NOISE_MULTIPLIER,
@@ -117,13 +126,18 @@ class DualLoraClient(FHIRFederatedClient):
             self._load_model()
 
             from ai_client.model_setup_bert import set_bert_parameters
+
             set_bert_parameters(self._model, parameters)
 
             with GPUTimer() as _timer:
                 updated_params, n_examples, metrics = dual_train_bert_one_round(
-                    model=self._model, tokenizer=self._tokenizer, examples=self._train_examples,
-                    label_index=self._label_index or {}, train_cfg=bert_cfg,
-                    local_ckpt_path=ckpt_path, max_length=self.max_length,
+                    model=self._model,
+                    tokenizer=self._tokenizer,
+                    examples=self._train_examples,
+                    label_index=self._label_index or {},
+                    train_cfg=bert_cfg,
+                    local_ckpt_path=ckpt_path,
+                    max_length=self.max_length,
                 )
             metrics["wall_clock_seconds"] = _timer.elapsed_s
 
@@ -141,7 +155,12 @@ class DualLoraClient(FHIRFederatedClient):
                         os.path.join(_CHECKPOINT_DIR, "final_global_params.npz"),
                         *updated_params,
                     )
-                    log.info("Final global params saved to %s (round %d/%d)", _CHECKPOINT_DIR, server_round, num_rounds)
+                    log.info(
+                        "Final global params saved to %s (round %d/%d)",
+                        _CHECKPOINT_DIR,
+                        server_round,
+                        num_rounds,
+                    )
                 except Exception as exc:
                     log.warning("Checkpoint save failed: %s", exc)
 
@@ -158,18 +177,24 @@ class DualLoraClient(FHIRFederatedClient):
         if dp_steps_this_round > 0:
             self._dp_total_steps += dp_steps_this_round
             if self._dp_noise_multiplier == 0.0:
-                self._dp_noise_multiplier = float(metrics.get("dp_noise_multiplier", 0.0))
+                self._dp_noise_multiplier = float(
+                    metrics.get("dp_noise_multiplier", 0.0)
+                )
                 self._dp_sample_rate = float(metrics.get("dp_sample_rate", 1.0))
                 self._dp_target_delta = float(metrics.get("dp_delta", 1e-5))
             epsilon_cum = _compute_cumulative_epsilon(
-                self._dp_noise_multiplier, self._dp_sample_rate,
-                self._dp_total_steps, self._dp_target_delta,
+                self._dp_noise_multiplier,
+                self._dp_sample_rate,
+                self._dp_total_steps,
+                self._dp_target_delta,
             )
             metrics["epsilon_cumulative"] = round(epsilon_cum, 4)
             metrics["dp_total_steps"] = self._dp_total_steps
             log.info(
                 "DP cumulative: ε=%.4f (total_steps=%d across %d rounds so far)",
-                epsilon_cum, self._dp_total_steps, server_round,
+                epsilon_cum,
+                self._dp_total_steps,
+                server_round,
             )
 
         # Fase 0 instrumentation: write the per-round grad-norm JSONL record
@@ -178,11 +203,14 @@ class DualLoraClient(FHIRFederatedClient):
         # metrics; the local (no-DP) pass is side-effect only.
         if "grad_norms_pre_clip" in metrics:
             import json as _json
+
             GradNormLogger().log_round(
                 server_round=server_round,
                 partition_id=self.partition_id,
                 grad_norms_pre_clip=_json.loads(metrics.pop("grad_norms_pre_clip")),
-                grad_norms_post_clip_noise=_json.loads(metrics.pop("grad_norms_post_clip_noise")),
+                grad_norms_post_clip_noise=_json.loads(
+                    metrics.pop("grad_norms_post_clip_noise")
+                ),
                 clip_thresholds=metrics.pop("clip_threshold", None),
                 learning_rate=metrics.pop("effective_lr", learning_rate),
                 epsilon_cumulative=metrics.get("epsilon_cumulative"),
@@ -192,7 +220,10 @@ class DualLoraClient(FHIRFederatedClient):
 
         log.info(
             "fit round %d | silo=%d | lora_mode=dual | exemplos=%d | loss=%.4f",
-            server_round, self.partition_id, n_examples, metrics.get("train_loss", float("nan")),
+            server_round,
+            self.partition_id,
+            n_examples,
+            metrics.get("train_loss", float("nan")),
         )
 
         return updated_params, n_examples, metrics
@@ -202,6 +233,11 @@ class DualLoraClient(FHIRFederatedClient):
         parameters: NDArrays,
         config: dict[str, Scalar],
     ) -> tuple[float, int, dict[str, Scalar]]:
+        """Evaluate the global adapter on this silo's held-out data.
+
+        Returns:
+            Flower ``evaluate`` triple: (loss, num examples, metrics).
+        """
         server_round = int(config.get("server_round", 0))
         log.info("evaluate — round %d | lora_mode=dual", server_round)
 
@@ -217,19 +253,28 @@ class DualLoraClient(FHIRFederatedClient):
             self._load_model()
 
             from torch.utils.data import DataLoader
-            from ai_client.model_setup_bert import build_bert_dataset, set_bert_parameters
+
+            from ai_client.model_setup_bert import (
+                build_bert_dataset,
+                set_bert_parameters,
+            )
 
             set_bert_parameters(self._model, parameters)
             _load_local_adapter(self._model, ckpt_path)
 
             device = next(self._model.parameters()).device
             eval_ds = build_bert_dataset(
-                self._eval_examples, self._label_index or {}, self._tokenizer,
-                self.max_length, num_labels=self._model.num_labels,
+                self._eval_examples,
+                self._label_index or {},
+                self._tokenizer,
+                self.max_length,
+                num_labels=self._model.num_labels,
             )
             eval_dl = DataLoader(eval_ds, batch_size=_BATCH_SIZE, shuffle=False)
             fused_metrics, global_metrics, local_metrics = evaluate_bert_model_fused(
-                self._model, eval_dl, device,
+                self._model,
+                eval_dl,
+                device,
             )
             n_examples = len(eval_ds)
 
@@ -244,12 +289,16 @@ class DualLoraClient(FHIRFederatedClient):
 
         log.info(
             "evaluate round %d | silo=%d | n=%d | fused micro_f1=%.4f",
-            server_round, self.partition_id, n_examples, metrics.get("micro_f1", 0.0),
+            server_round,
+            self.partition_id,
+            n_examples,
+            metrics.get("micro_f1", 0.0),
         )
         return loss, n_examples, metrics
 
 
 def client_fn(context: Context) -> fl.client.Client:
+    """ClientApp factory: build this silo's dual-LoRA client from run/node config."""
     run_cfg = context.run_config if hasattr(context, "run_config") else {}
     partition_id = int(context.node_config.get("partition-id", _PARTITION_ID))
 
@@ -266,6 +315,7 @@ app = ClientApp(client_fn=client_fn)
 
 
 def main() -> None:
+    """Legacy ``start_numpy_client`` entry point (SuperNode uses the ClientApp)."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
@@ -279,7 +329,10 @@ def main() -> None:
     log.info("=== Dual-LoRA FL Client starting ===")
     log.info(
         "FHIR: %s | Flower server: %s | Partition: %d | seed=%d",
-        _FHIR_URL, _FL_ADDRESS, _PARTITION_ID, _FL_SEED,
+        _FHIR_URL,
+        _FL_ADDRESS,
+        _PARTITION_ID,
+        _FL_SEED,
     )
 
     client = DualLoraClient(

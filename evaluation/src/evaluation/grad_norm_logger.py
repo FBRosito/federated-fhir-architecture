@@ -64,7 +64,12 @@ def is_enabled() -> bool:
     """LOG_GRAD_NORMS default is ON ("1") — the Fase 0 spec asks for this
     instrumentation to default to enabled in DP experiments; set
     LOG_GRAD_NORMS=0/false/no/off to disable."""
-    return os.environ.get("LOG_GRAD_NORMS", "1").strip().lower() not in ("0", "false", "no", "off")
+    return os.environ.get("LOG_GRAD_NORMS", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
 
 
 def group_by_layer(
@@ -106,10 +111,14 @@ def snapshot_group_norms(
     groups = group_by_layer(named_parameters)
     norms: dict[str, float] = {}
     for name, params in groups.items():
-        tensors = [getattr(p, attr) for p in params if getattr(p, attr, None) is not None]
+        tensors = [
+            getattr(p, attr) for p in params if getattr(p, attr, None) is not None
+        ]
         if not tensors:
             continue
-        norms[name] = float(torch.norm(torch.stack([t.detach().norm(2) for t in tensors]), 2).item())
+        norms[name] = float(
+            torch.norm(torch.stack([t.detach().norm(2) for t in tensors]), 2).item()
+        )
     return norms
 
 

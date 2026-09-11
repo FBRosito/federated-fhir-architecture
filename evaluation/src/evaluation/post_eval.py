@@ -23,19 +23,23 @@ import logging
 import os
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
 log = logging.getLogger(__name__)
 
-_DEFAULT_FHIR_URL   = os.getenv("FHIR_SERVER_URL", "http://localhost:8080/fhir")
+_DEFAULT_FHIR_URL = os.getenv("FHIR_SERVER_URL", "http://localhost:8080/fhir")
 _DEFAULT_BASE_MODEL = os.getenv("MODEL_NAME", "meta-llama/Llama-3.2-1B")
-_DEFAULT_MAX_LEN    = int(os.getenv("MAX_SEQ_LEN", "512"))
+_DEFAULT_MAX_LEN = int(os.getenv("MAX_SEQ_LEN", "512"))
 
 
 def load_model_from_checkpoint(
     checkpoint_dir: str,
     base_model_name: str,
     device: str = "auto",
-):
+) -> tuple[PreTrainedModel, PreTrainedTokenizerBase]:
     """
     Loads base model + LoRA adapter weights from checkpoint_dir.
 
@@ -52,8 +56,8 @@ def load_model_from_checkpoint(
     """
     try:
         import torch
-        from transformers import AutoTokenizer, BitsAndBytesConfig, AutoModelForCausalLM
         from peft import PeftModel
+        from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
     except ImportError as e:
         raise ImportError(
             f"Missing dependency: {e}. Install transformers, peft, and bitsandbytes."
@@ -84,8 +88,8 @@ def load_model_from_checkpoint(
 
 
 def generate_summaries(
-    model,
-    tokenizer,
+    model: PreTrainedModel,
+    tokenizer: PreTrainedTokenizerBase,
     examples: list,
     max_input_length: int = 384,
     max_new_tokens: int = 256,
@@ -135,7 +139,7 @@ def generate_summaries(
             )
 
         # Decode only the newly generated tokens (strip the input prefix)
-        new_tokens = output_ids[0][input_ids.shape[1]:]
+        new_tokens = output_ids[0][input_ids.shape[1] :]
         summary = tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
         predictions.append(summary)
 
@@ -213,9 +217,9 @@ def _stratified_judge_sample(
 
     # ── Build 3×2 strata pools ──
     strata: dict[str, dict[str, list[int]]] = {
-        "short":  {"few": [], "many": []},
+        "short": {"few": [], "many": []},
         "medium": {"few": [], "many": []},
-        "long":   {"few": [], "many": []},
+        "long": {"few": [], "many": []},
     }
     for i, ex in enumerate(examples):
         strata[_length_bin(lengths[i])][_complexity(ex)].append(i)
@@ -230,8 +234,13 @@ def _stratified_judge_sample(
         n_bin_total = n_f + n_m
 
         if n_bin_total == 0:
-            report[bin_name] = {"available_few": 0, "available_many": 0,
-                                 "sampled_few": 0, "sampled_many": 0, "sampled_total": 0}
+            report[bin_name] = {
+                "available_few": 0,
+                "available_many": 0,
+                "sampled_few": 0,
+                "sampled_many": 0,
+                "sampled_total": 0,
+            }
             continue
 
         if n_bin_total <= n_per_length_bin:
@@ -255,17 +264,17 @@ def _stratified_judge_sample(
         selected.extend(f_pool[:draw_f])
         selected.extend(m_pool[:draw_m])
         report[bin_name] = {
-            "available_few":  n_f,
+            "available_few": n_f,
             "available_many": n_m,
-            "sampled_few":    draw_f,
-            "sampled_many":   draw_m,
-            "sampled_total":  draw_f + draw_m,
+            "sampled_few": draw_f,
+            "sampled_many": draw_m,
+            "sampled_total": draw_f + draw_m,
         }
 
     selected = sorted(selected)
     return (
         [predictions[i] for i in selected],
-        [references[i]  for i in selected],
+        [references[i] for i in selected],
         selected,
         report,
     )
@@ -309,9 +318,9 @@ def run_post_eval(
     Returns:
         Updated run JSON dict with "post_eval" key added.
     """
+    from ai_client.fhir_consumer_summarization import fetch_summarization_examples
     from evaluation.llm_judge import evaluate_with_llm_judges
     from evaluation.summarization_metrics import evaluate_summaries
-    from ai_client.fhir_consumer_summarization import fetch_summarization_examples
 
     # ── Load run JSON ──
     run_path = Path(run_json_path)
@@ -321,7 +330,10 @@ def run_post_eval(
     log.info("Post-eval for run: %s", run_data.get("tag", run_json_path))
     log.info(
         "Checkpoint: %s | FHIR: %s | max_samples=%s | judge_samples=%d",
-        checkpoint_dir, fhir_url, max_samples or "all", judge_samples,
+        checkpoint_dir,
+        fhir_url,
+        max_samples or "all",
+        judge_samples,
     )
 
     # ── Load model ──
@@ -337,8 +349,11 @@ def run_post_eval(
         log.warning("No summarization examples fetched — post-eval aborted.")
         return run_data
 
-    log.info("Fetched %d examples (missing_summary=%d).",
-             len(examples), fetch_stats.get("missing_summary", 0))
+    log.info(
+        "Fetched %d examples (missing_summary=%d).",
+        len(examples),
+        fetch_stats.get("missing_summary", 0),
+    )
 
     references = [ex.reference_summary for ex in examples]
     examples_with_ref = [ex for ex in examples if ex.reference_summary]
@@ -354,13 +369,18 @@ def run_post_eval(
     log.info("Generating summaries for %d examples...", len(examples))
     t0 = time.perf_counter()
     predictions = generate_summaries(
-        model, tokenizer, examples,
+        model,
+        tokenizer,
+        examples,
         max_input_length=max_input_length,
         max_new_tokens=max_new_tokens,
     )
     gen_time = time.perf_counter() - t0
-    log.info("Generation completed in %.1fs (%.2fs/example).",
-             gen_time, gen_time / max(len(examples), 1))
+    log.info(
+        "Generation completed in %.1fs (%.2fs/example).",
+        gen_time,
+        gen_time / max(len(examples), 1),
+    )
 
     # ── ROUGE + BERTScore ──
     log.info("Computing ROUGE and BERTScore...")
@@ -382,7 +402,9 @@ def run_post_eval(
     # which pure random sampling can miss on skewed clinical datasets.
     n_per_bin = judge_samples // 3
     judge_preds, judge_refs, judge_indices, strata_report = _stratified_judge_sample(
-        examples, predictions, references,
+        examples,
+        predictions,
+        references,
         n_per_length_bin=n_per_bin,
         seed=seed,
     )
@@ -390,9 +412,15 @@ def run_post_eval(
     log.info(
         "LLM-as-judge: stratified sample %d/%d examples (seed=%d). "
         "ROUGE/BERTScore computed on all %d.",
-        n_judge, len(predictions), seed, len(predictions),
+        n_judge,
+        len(predictions),
+        seed,
+        len(predictions),
     )
-    log.info("  ICD median threshold: %.1f codes", strata_report.get("icd_median_threshold", 0))
+    log.info(
+        "  ICD median threshold: %.1f codes",
+        strata_report.get("icd_median_threshold", 0),
+    )
     for bin_name, bin_stats in strata_report.items():
         if not isinstance(bin_stats, dict):
             continue
@@ -401,7 +429,8 @@ def run_post_eval(
             "from %d available",
             bin_name,
             bin_stats["sampled_total"],
-            bin_stats["sampled_few"], bin_stats["sampled_many"],
+            bin_stats["sampled_few"],
+            bin_stats["sampled_many"],
             bin_stats["available_few"] + bin_stats["available_many"],
         )
     judge_result = evaluate_with_llm_judges(
@@ -412,27 +441,30 @@ def run_post_eval(
 
     # ── Update run JSON ──
     run_data["post_eval"] = {
-        "n_samples":          len(examples),
-        "n_judge_samples":    n_judge,
-        "generation_time_s":  round(gen_time, 2),
-        "auto_metrics":       auto_metrics,
-        "judge_strata":       strata_report,
-        "llm_judge":          judge_result,
+        "n_samples": len(examples),
+        "n_judge_samples": n_judge,
+        "generation_time_s": round(gen_time, 2),
+        "auto_metrics": auto_metrics,
+        "judge_strata": strata_report,
+        "llm_judge": judge_result,
         "sample_outputs": [
             {
                 "prediction": predictions[i][:500],
-                "reference":  references[i][:500],
+                "reference": references[i][:500],
             }
             for i in range(min(5, len(predictions)))
         ],
     }
 
-    run_path.write_text(json.dumps(run_data, indent=2, ensure_ascii=False), encoding="utf-8")
+    run_path.write_text(
+        json.dumps(run_data, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
     log.info("Run JSON updated: %s", run_path)
     return run_data
 
 
 def main() -> None:
+    """CLI entry point: generate summaries and run the LLM-as-judge ensemble."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
@@ -512,14 +544,20 @@ def main() -> None:
     )
 
     summary = result.get("post_eval", {})
-    print(json.dumps({
-        "n_samples":    summary.get("n_samples"),
-        "auto_metrics": summary.get("auto_metrics"),
-        "llm_judge":    {
-            k: v for k, v in summary.get("llm_judge", {}).items()
-            if k != "per_sample"
-        },
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "n_samples": summary.get("n_samples"),
+                "auto_metrics": summary.get("auto_metrics"),
+                "llm_judge": {
+                    k: v
+                    for k, v in summary.get("llm_judge", {}).items()
+                    if k != "per_sample"
+                },
+            },
+            indent=2,
+        )
+    )
 
 
 if __name__ == "__main__":

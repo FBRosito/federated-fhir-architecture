@@ -25,9 +25,10 @@ import logging
 import os
 from pathlib import Path
 
-from flwr.server import ServerConfig, start_server
-
 from adaptive_clipping.logging_utils import GradientNormLogger, RoundLogRecord
+from flwr.server import ServerConfig, start_server
+from flwr.server.strategy import Strategy
+
 from fl_server.server import (
     FRACTION_EVAL,
     FRACTION_FIT,
@@ -102,11 +103,17 @@ def _flush_eval_metrics(metrics: list[tuple[int, dict]]) -> dict:
             per_layer_thresholds=_json_field(fit_metrics, "per_layer_thresholds"),
             per_layer_norms=_json_field(fit_metrics, "per_layer_norms"),
             micro_f1=float(client_metrics.get("micro_f1", 0.0)),
-            epsilon=float(fit_metrics.get("epsilon_cumulative", fit_metrics.get("epsilon_spent", 0.0))),
+            epsilon=float(
+                fit_metrics.get(
+                    "epsilon_cumulative", fit_metrics.get("epsilon_spent", 0.0)
+                )
+            ),
             delta=_TARGET_DELTA,
             wall_clock_seconds=float(fit_metrics.get("wall_clock_seconds", 0.0)),
         )
-        logger = GradientNormLogger(experiment_tag=_EXPERIMENT_TAG, silo_id=silo_id, logs_root=_LOGS_DIR)
+        logger = GradientNormLogger(
+            experiment_tag=_EXPERIMENT_TAG, silo_id=silo_id, logs_root=_LOGS_DIR
+        )
         logger.log_round(record)
     return aggregated
 
@@ -118,7 +125,7 @@ def build_adaptive_strategy(
     fraction_fit: float = FRACTION_FIT,
     fraction_eval: float = FRACTION_EVAL,
     proximal_mu: float = PROXIMAL_MU,
-):
+) -> Strategy:
     """Builds a plain FedProx/FedAvg strategy — client-side DP only, same
     aggregation as the base HERALD server — with fit/eval metrics wrapped
     for per-round JSONL logging."""
@@ -134,6 +141,7 @@ def build_adaptive_strategy(
 
 
 def main() -> None:
+    """Legacy ``start_server`` entry point for the adaptive-clipping experiment."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
@@ -143,7 +151,12 @@ def main() -> None:
     log.info("=== Adaptive Clipping FL Server starting ===")
     log.info(
         "Config: strategy=%s | clipping=%s | rounds=%d | min_clients=%d | σ=%.2f | tag=%s",
-        STRATEGY_NAME, _CLIPPING_STRATEGY, NUM_ROUNDS, MIN_CLIENTS, NOISE_MULTIPLIER, _EXPERIMENT_TAG,
+        STRATEGY_NAME,
+        _CLIPPING_STRATEGY,
+        NUM_ROUNDS,
+        MIN_CLIENTS,
+        NOISE_MULTIPLIER,
+        _EXPERIMENT_TAG,
     )
 
     strategy = build_adaptive_strategy()

@@ -23,14 +23,15 @@ y_score: np.ndarray [n_samples, n_labels], probabilities (sigmoid outputs)
 from __future__ import annotations
 
 import logging
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
-from sklearn.metrics import (
-    average_precision_score,
-    f1_score,
-    roc_auc_score,
-)
+from sklearn.metrics import f1_score, roc_auc_score
+
+if TYPE_CHECKING:
+    import torch
+    from torch.utils.data import DataLoader
 
 log = logging.getLogger(__name__)
 
@@ -38,29 +39,30 @@ log = logging.getLogger(__name__)
 @dataclass
 class ICD10Metrics:
     """Container for ICD-10 coding metrics."""
-    micro_f1:       float
-    macro_f1:       float
-    auc_roc_micro:  float
-    auc_roc_macro:  float
+
+    micro_f1: float
+    macro_f1: float
+    auc_roc_micro: float
+    auc_roc_macro: float
     # @k metrics: dictionaries {k: value}
     precision_at_k: dict[int, float]
-    recall_at_k:    dict[int, float]
-    f1_at_k:        dict[int, float]
-    n_samples:      int
-    n_labels:       int
-    threshold:      float = 0.5
-    avg_loss:       float = 0.0  # mean BCE loss from the evaluation round
+    recall_at_k: dict[int, float]
+    f1_at_k: dict[int, float]
+    n_samples: int
+    n_labels: int
+    threshold: float = 0.5
+    avg_loss: float = 0.0  # mean BCE loss from the evaluation round
 
     def to_flat_dict(self) -> dict[str, float]:
         """Converts to a flat dictionary for logging (e.g. MLflow, CSV)."""
         d: dict[str, float] = {
-            "eval_loss":     self.avg_loss,
-            "micro_f1":      self.micro_f1,
-            "macro_f1":      self.macro_f1,
+            "eval_loss": self.avg_loss,
+            "micro_f1": self.micro_f1,
+            "macro_f1": self.macro_f1,
             "auc_roc_micro": self.auc_roc_micro,
             "auc_roc_macro": self.auc_roc_macro,
-            "n_samples":     float(self.n_samples),
-            "n_labels":      float(self.n_labels),
+            "n_samples": float(self.n_samples),
+            "n_labels": float(self.n_labels),
         }
         for k, v in self.precision_at_k.items():
             d[f"P@{k}"] = v
@@ -94,7 +96,7 @@ def _precision_at_k(y_true: np.ndarray, y_score: np.ndarray, k: int) -> float:
     total = 0.0
     for i in range(n):
         predicted = set(top_k[i])
-        relevant  = set(np.where(y_true[i] == 1)[0])
+        relevant = set(np.where(y_true[i] == 1)[0])
         total += len(predicted & relevant) / k
     return total / max(n, 1)
 
@@ -106,7 +108,7 @@ def _recall_at_k(y_true: np.ndarray, y_score: np.ndarray, k: int) -> float:
     total = 0.0
     for i in range(n):
         predicted = set(top_k[i])
-        relevant  = set(np.where(y_true[i] == 1)[0])
+        relevant = set(np.where(y_true[i] == 1)[0])
         denom = max(len(relevant), 1)
         total += len(predicted & relevant) / denom
     return total / max(n, 1)
@@ -124,7 +126,11 @@ def find_optimal_threshold(
     candidates = thresholds if thresholds is not None else _THRESHOLD_GRID
     best_t, best_f1 = 0.5, -1.0
     for t in candidates:
-        f1 = float(f1_score(y_true, (y_score >= t).astype(int), average="micro", zero_division=0))
+        f1 = float(
+            f1_score(
+                y_true, (y_score >= t).astype(int), average="micro", zero_division=0
+            )
+        )
         if f1 > best_f1:
             best_f1, best_t = f1, t
     log.debug("Optimal threshold: %.2f  (micro-F1=%.4f)", best_t, best_f1)
@@ -175,47 +181,55 @@ def compute_icd_metrics(
         if len(valid_cols) < 2:
             auc_roc_micro = auc_roc_macro = float("nan")
         else:
-            auc_roc_micro = float(roc_auc_score(
-                y_true[:, valid_cols], y_score[:, valid_cols], average="micro"
-            ))
-            auc_roc_macro = float(roc_auc_score(
-                y_true[:, valid_cols], y_score[:, valid_cols], average="macro"
-            ))
+            auc_roc_micro = float(
+                roc_auc_score(
+                    y_true[:, valid_cols], y_score[:, valid_cols], average="micro"
+                )
+            )
+            auc_roc_macro = float(
+                roc_auc_score(
+                    y_true[:, valid_cols], y_score[:, valid_cols], average="macro"
+                )
+            )
     except Exception as exc:
         log.warning("AUC-ROC not computable: %s", exc)
         auc_roc_micro = auc_roc_macro = float("nan")
 
     # @k metrics
     precision_at_k: dict[int, float] = {}
-    recall_at_k:    dict[int, float] = {}
-    f1_at_k:        dict[int, float] = {}
+    recall_at_k: dict[int, float] = {}
+    f1_at_k: dict[int, float] = {}
 
     for k in k_list:
         p = _precision_at_k(y_true, y_score, k)
         r = _recall_at_k(y_true, y_score, k)
         f = 2 * p * r / max(p + r, 1e-9)
         precision_at_k[k] = round(p, 6)
-        recall_at_k[k]    = round(r, 6)
-        f1_at_k[k]        = round(f, 6)
+        recall_at_k[k] = round(r, 6)
+        f1_at_k[k] = round(f, 6)
 
     return ICD10Metrics(
-        micro_f1       = round(micro_f1, 6),
-        macro_f1       = round(macro_f1, 6),
-        auc_roc_micro  = round(auc_roc_micro, 6) if not np.isnan(auc_roc_micro) else float("nan"),
-        auc_roc_macro  = round(auc_roc_macro, 6) if not np.isnan(auc_roc_macro) else float("nan"),
-        precision_at_k = precision_at_k,
-        recall_at_k    = recall_at_k,
-        f1_at_k        = f1_at_k,
-        n_samples      = n_samples,
-        n_labels       = n_labels,
-        threshold      = threshold,
+        micro_f1=round(micro_f1, 6),
+        macro_f1=round(macro_f1, 6),
+        auc_roc_micro=(
+            round(auc_roc_micro, 6) if not np.isnan(auc_roc_micro) else float("nan")
+        ),
+        auc_roc_macro=(
+            round(auc_roc_macro, 6) if not np.isnan(auc_roc_macro) else float("nan")
+        ),
+        precision_at_k=precision_at_k,
+        recall_at_k=recall_at_k,
+        f1_at_k=f1_at_k,
+        n_samples=n_samples,
+        n_labels=n_labels,
+        threshold=threshold,
     )
 
 
 def evaluate_bert_model(
-    model,           # PLMICDModel
-    dataloader,      # DataLoader with ICD10MultiLabelDataset
-    device,          # torch.device
+    model: torch.nn.Module,
+    dataloader: DataLoader,
+    device: torch.device,
     k_list: list[int] | None = None,
 ) -> ICD10Metrics:
     """
@@ -239,13 +253,19 @@ def evaluate_bert_model(
 
     with torch.no_grad():
         for batch in dataloader:
-            input_ids      = batch["input_ids"].to(device)
+            input_ids = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
-            labels         = batch["labels"].to(device)
+            labels = batch["labels"].to(device)
 
-            amp_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-            with torch.amp.autocast("cuda", dtype=amp_dtype, enabled=torch.cuda.is_available()):
-                out = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+            amp_dtype = (
+                torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+            )
+            with torch.amp.autocast(
+                "cuda", dtype=amp_dtype, enabled=torch.cuda.is_available()
+            ):
+                out = model(
+                    input_ids=input_ids, attention_mask=attention_mask, labels=labels
+                )
 
             all_logits.append(out["logits"].float().cpu())
             all_labels.append(labels.float().cpu())

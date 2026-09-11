@@ -1,4 +1,4 @@
-# Artigo 3 — DP-LoRA baseline (standard LoRA, ambas matrizes treináveis)
+# Article 3 — DP-LoRA baseline (standard LoRA, both matrices trainable)
 lora_mode: standard
 clipping_strategy: global
 global_c0: 1.0

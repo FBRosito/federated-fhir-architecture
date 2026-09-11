@@ -15,11 +15,14 @@ Usage:
 """
 
 import json
+import logging
 import sys
 import uuid
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
 from urllib.parse import parse_qs, urlparse
+
+log = logging.getLogger(__name__)
 
 _STORE: dict[str, dict[str, dict]] = {
     "Condition": {},
@@ -60,8 +63,8 @@ def _searchset(resources: dict, count: int, offset: int, base_url: str) -> dict:
 
 
 class _FHIRHandler(BaseHTTPRequestHandler):
-    def log_message(self, fmt, *args):  # suppress access logs
-        pass
+    def log_message(self, format: str, *args: object) -> None:
+        """Suppress default access logs (noise in FL experiment output)."""
 
     def _json(self, data: dict, status: int = 200) -> None:
         body = json.dumps(data, ensure_ascii=False).encode()
@@ -73,17 +76,20 @@ class _FHIRHandler(BaseHTTPRequestHandler):
 
     def _err(self, status: int, msg: str) -> None:
         self._json(
-            {"resourceType": "OperationOutcome",
-             "issue": [{"severity": "error", "diagnostics": msg}]},
+            {
+                "resourceType": "OperationOutcome",
+                "issue": [{"severity": "error", "diagnostics": msg}],
+            },
             status,
         )
 
     def do_GET(self) -> None:
+        """Handle FHIR read/search endpoints (metadata + paginated resource search)."""
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
         qs = parse_qs(parsed.query)
 
-        def p(k: str, default: str) -> str:
+        def _param(k: str, default: str) -> str:
             return qs.get(k, [default])[0]
 
         if path == "/fhir/metadata":
@@ -100,14 +106,15 @@ class _FHIRHandler(BaseHTTPRequestHandler):
             self._err(404, f"Unknown resource type: {rtype}")
             return
 
-        count = int(p("_count", "50"))
-        offset = int(p("_offset", "0"))
-        subject = p("subject", "") or p("patient", "")
+        count = int(_param("_count", "50"))
+        offset = int(_param("_offset", "0"))
+        subject = _param("subject", "") or _param("patient", "")
 
         resources = _STORE[rtype]
         if subject:
             resources = {
-                k: v for k, v in resources.items()
+                k: v
+                for k, v in resources.items()
                 if v.get("subject", {}).get("reference", "") == subject
                 or v.get("patient", {}).get("reference", "") == subject
             }
@@ -116,6 +123,7 @@ class _FHIRHandler(BaseHTTPRequestHandler):
         self._json(_searchset(resources, count, offset, base_url))
 
     def do_POST(self) -> None:
+        """Handle FHIR transaction-bundle ingestion (ETL Worker uploads)."""
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/")
 
@@ -147,8 +155,11 @@ class _FHIRHandler(BaseHTTPRequestHandler):
             )
 
         self._json(
-            {"resourceType": "Bundle", "type": "transaction-response",
-             "entry": response_entries},
+            {
+                "resourceType": "Bundle",
+                "type": "transaction-response",
+                "entry": response_entries,
+            },
             200,
         )
 
@@ -160,6 +171,9 @@ class _ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8080
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO, format="%(levelname)s %(name)s: %(message)s"
+    )
     server = _ThreadedHTTPServer(("0.0.0.0", PORT), _FHIRHandler)
-    print(f"FHIR server ready on http://0.0.0.0:{PORT}/fhir", flush=True)
+    log.info("FHIR server ready on http://0.0.0.0:%d/fhir", PORT)
     server.serve_forever()

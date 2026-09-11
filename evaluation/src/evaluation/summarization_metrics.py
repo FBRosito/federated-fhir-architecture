@@ -33,25 +33,27 @@ PUBMEDBERT_MODEL = "microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract-fulltex
 @dataclass
 class SummarizationMetrics:
     """Container for clinical summarisation metrics."""
-    rouge_1:     float
-    rouge_2:     float
-    rouge_l:     float
+
+    rouge_1: float
+    rouge_2: float
+    rouge_l: float
     bertscore_f1: float
-    bertscore_p:  float
-    bertscore_r:  float
-    n_samples:    int
+    bertscore_p: float
+    bertscore_r: float
+    n_samples: int
     # QAGS is optional — requires QA pipeline installed
-    qags_score:   float | None = None
+    qags_score: float | None = None
 
     def to_flat_dict(self) -> dict[str, float]:
+        """Flatten all metrics into a single-level dict (CSV/JSON-ready)."""
         d: dict[str, float] = {
-            "rouge_1":      self.rouge_1,
-            "rouge_2":      self.rouge_2,
-            "rouge_l":      self.rouge_l,
+            "rouge_1": self.rouge_1,
+            "rouge_2": self.rouge_2,
+            "rouge_l": self.rouge_l,
             "bertscore_f1": self.bertscore_f1,
-            "bertscore_p":  self.bertscore_p,
-            "bertscore_r":  self.bertscore_r,
-            "n_samples":    float(self.n_samples),
+            "bertscore_p": self.bertscore_p,
+            "bertscore_r": self.bertscore_r,
+            "n_samples": float(self.n_samples),
         }
         if self.qags_score is not None:
             d["qags_score"] = self.qags_score
@@ -79,7 +81,11 @@ def _compute_rouge(
         from rouge_score import rouge_scorer
     except ImportError:
         log.warning("rouge-score not installed — ROUGE will be NaN.")
-        return {"rouge_1": float("nan"), "rouge_2": float("nan"), "rouge_l": float("nan")}
+        return {
+            "rouge_1": float("nan"),
+            "rouge_2": float("nan"),
+            "rouge_l": float("nan"),
+        }
 
     scorer = rouge_scorer.RougeScorer(["rouge1", "rouge2", "rougeL"], use_stemmer=True)
     r1s, r2s, rls = [], [], []
@@ -123,15 +129,15 @@ def _compute_bertscore(
         P, R, F = bert_score_fn(
             predictions,
             references,
-            model_type  = model_type,
-            lang        = "en",
-            verbose     = False,
-            batch_size  = 8,
-            rescale_with_baseline = True,
+            model_type=model_type,
+            lang="en",
+            verbose=False,
+            batch_size=8,
+            rescale_with_baseline=True,
         )
         return {
-            "bertscore_p":  float(P.mean().item()),
-            "bertscore_r":  float(R.mean().item()),
+            "bertscore_p": float(P.mean().item()),
+            "bertscore_r": float(R.mean().item()),
             "bertscore_f1": float(F.mean().item()),
         }
     except Exception as exc:
@@ -146,18 +152,17 @@ def _compute_bertscore(
 def _compute_qags(
     predictions: list[str],
     references: list[str],
-    n_questions: int = 5,
     max_samples: int = 50,
 ) -> float | None:
     """
-    QAGS (Wang et al., 2020): factual consistency without an external LLM.
+    QAGS-style (Wang et al., 2020) factual consistency without an external LLM.
 
     Algorithm:
-      1. Generates questions about each generated summary via a QG model.
-      2. Answers those same questions on the reference note via a QA model.
-      3. Score = average semantic similarity between answer pairs.
+      1. Asks a fixed question ("What is the main diagnosis?") on each generated
+         summary and on the reference note via a QA model.
+      2. Score = average token-overlap (Dice) similarity between answer pairs.
 
-    Limitation: requires transformers with QG/QA models — can be slow.
+    Limitation: requires transformers with a QA model — can be slow.
     Returns None if transformers is not installed or if an error occurs.
     """
     try:
@@ -181,15 +186,19 @@ def _compute_qags(
 
     for pred, ref in zip(predictions[:n], references[:n]):
         try:
-            result_pred = qa_pipeline(question="What is the main diagnosis?", context=pred)
-            result_ref  = qa_pipeline(question="What is the main diagnosis?", context=ref)
+            result_pred = qa_pipeline(
+                question="What is the main diagnosis?", context=pred
+            )
+            result_ref = qa_pipeline(
+                question="What is the main diagnosis?", context=ref
+            )
 
             ans_pred = str(result_pred.get("answer", "")).lower().strip()
-            ans_ref  = str(result_ref.get("answer", "")).lower().strip()
+            ans_ref = str(result_ref.get("answer", "")).lower().strip()
 
             # Simple token-overlap similarity
             tokens_pred = set(ans_pred.split())
-            tokens_ref  = set(ans_ref.split())
+            tokens_ref = set(ans_ref.split())
             if tokens_pred or tokens_ref:
                 overlap = len(tokens_pred & tokens_ref)
                 sim = 2 * overlap / max(len(tokens_pred) + len(tokens_ref), 1)
@@ -226,28 +235,34 @@ def evaluate_summaries(
     if not predictions or not references:
         log.warning("evaluate_summaries: empty lists — returning NaN.")
         return SummarizationMetrics(
-            rouge_1=float("nan"), rouge_2=float("nan"), rouge_l=float("nan"),
-            bertscore_f1=float("nan"), bertscore_p=float("nan"), bertscore_r=float("nan"),
+            rouge_1=float("nan"),
+            rouge_2=float("nan"),
+            rouge_l=float("nan"),
+            bertscore_f1=float("nan"),
+            bertscore_p=float("nan"),
+            bertscore_r=float("nan"),
             n_samples=0,
         )
 
-    assert len(predictions) == len(references), "predictions and references must have the same length."
+    assert len(predictions) == len(
+        references
+    ), "predictions and references must have the same length."
     n = len(predictions)
     log.info("Computing summarisation metrics for %d samples...", n)
 
-    rouge  = _compute_rouge(predictions, references)
+    rouge = _compute_rouge(predictions, references)
     bscore = _compute_bertscore(predictions, references, model_type=bertscore_model)
-    qags   = _compute_qags(predictions, references) if compute_qags else None
+    qags = _compute_qags(predictions, references) if compute_qags else None
 
     metrics = SummarizationMetrics(
-        rouge_1      = round(rouge["rouge_1"], 6),
-        rouge_2      = round(rouge["rouge_2"], 6),
-        rouge_l      = round(rouge["rouge_l"], 6),
-        bertscore_p  = round(bscore["bertscore_p"], 6),
-        bertscore_r  = round(bscore["bertscore_r"], 6),
-        bertscore_f1 = round(bscore["bertscore_f1"], 6),
-        n_samples    = n,
-        qags_score   = round(qags, 6) if qags is not None else None,
+        rouge_1=round(rouge["rouge_1"], 6),
+        rouge_2=round(rouge["rouge_2"], 6),
+        rouge_l=round(rouge["rouge_l"], 6),
+        bertscore_p=round(bscore["bertscore_p"], 6),
+        bertscore_r=round(bscore["bertscore_r"], 6),
+        bertscore_f1=round(bscore["bertscore_f1"], 6),
+        n_samples=n,
+        qags_score=round(qags, 6) if qags is not None else None,
     )
 
     log.info("Summarisation metrics:\n%s", metrics)

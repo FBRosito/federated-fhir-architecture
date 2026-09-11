@@ -27,9 +27,6 @@ from typing import Any
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.optim import AdamW
-from torch.optim.lr_scheduler import CosineAnnealingLR
-from torch.utils.data import DataLoader, Dataset, SubsetRandomSampler
 from peft import (
     LoraConfig,
     TaskType,
@@ -37,6 +34,9 @@ from peft import (
     get_peft_model_state_dict,
     set_peft_model_state_dict,
 )
+from torch.optim import AdamW
+from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.utils.data import DataLoader, Dataset, SubsetRandomSampler
 from transformers import (
     AutoModel,
     AutoTokenizer,
@@ -59,32 +59,34 @@ BERT_LORA_TARGET_MODULES = ["query", "value"]
 
 # ── Configuration ──────────────────────────────────────────────────────────────
 
+
 @dataclass
 class BertLoRAConfig:
-    r:            int   = 8
-    lora_alpha:   int   = 16
+    r: int = 8
+    lora_alpha: int = 16
     lora_dropout: float = 0.05
-    bias:         str   = "none"
+    bias: str = "none"
     target_modules: list[str] = field(default_factory=lambda: BERT_LORA_TARGET_MODULES)
 
 
 @dataclass
 class BertTrainingConfig:
-    learning_rate:        float = 2e-4
-    weight_decay:         float = 0.01
-    num_epochs:           int   = 1
-    batch_size:           int   = 8
-    gradient_accum_steps: int   = 8
-    max_grad_norm:        float = 1.0
-    warmup_ratio:         float = 0.1
-    use_amp:              bool  = True
-    proximal_mu:          float = 0.0
-    noise_multiplier:     float = 0.0
-    target_delta:         float = 1e-5
-    dp_subsample_rate:    float = 0.1
+    learning_rate: float = 2e-4
+    weight_decay: float = 0.01
+    num_epochs: int = 1
+    batch_size: int = 8
+    gradient_accum_steps: int = 8
+    max_grad_norm: float = 1.0
+    warmup_ratio: float = 0.1
+    use_amp: bool = True
+    proximal_mu: float = 0.0
+    noise_multiplier: float = 0.0
+    target_delta: float = 1e-5
+    dp_subsample_rate: float = 0.1
 
 
 # ── Model: PubMedBERT + per-label attention + sigmoid ─────────────────────────
+
 
 class PLMICDModel(nn.Module):
     """
@@ -107,7 +109,7 @@ class PLMICDModel(nn.Module):
         hidden_size: int = 768,
     ) -> None:
         super().__init__()
-        self.encoder    = encoder
+        self.encoder = encoder
         self.num_labels = num_labels
         self.hidden_size = hidden_size
 
@@ -122,8 +124,16 @@ class PLMICDModel(nn.Module):
         attention_mask: torch.Tensor,
         labels: torch.Tensor | None = None,
     ) -> dict[str, torch.Tensor]:
+        """LAAT-style forward: per-label attention over token embeddings + per-label classifier.
+
+        Returns:
+            Dict with ``logits`` ([batch, num_labels]) and, when ``labels`` are
+            given, ``loss`` (scalar BCEWithLogits).
+        """
         # H: [batch, seq_len, hidden_size]
-        H = self.encoder(input_ids=input_ids, attention_mask=attention_mask).last_hidden_state
+        H = self.encoder(
+            input_ids=input_ids, attention_mask=attention_mask
+        ).last_hidden_state
 
         # Attn scores: [batch, seq_len, num_labels]
         attn_scores = self.label_attention(H)
@@ -139,7 +149,9 @@ class PLMICDModel(nn.Module):
         v = torch.bmm(alpha, H)
 
         # Logits: [batch, num_labels] via linear classifier
-        logits = (v * self.classifier.weight.unsqueeze(0)).sum(-1) + self.classifier.bias
+        logits = (v * self.classifier.weight.unsqueeze(0)).sum(
+            -1
+        ) + self.classifier.bias
 
         output: dict[str, torch.Tensor] = {"logits": logits}
 
@@ -152,6 +164,7 @@ class PLMICDModel(nn.Module):
 
 
 # ── Model loading ──────────────────────────────────────────────────────────────
+
 
 def load_bert_model(
     model_name: str = PUBMEDBERT_MODEL_ID,
@@ -176,31 +189,41 @@ def load_bert_model(
 
     log.info("Loading PubMedBERT tokeniser: %s", model_name)
     try:
-        tokenizer = AutoTokenizer.from_pretrained(model_name, token=hf_token, use_fast=True)
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_name, token=hf_token, use_fast=True
+        )
     except Exception as _e:
         log.warning("HF Hub unavailable (%s). Loading tokeniser from local cache.", _e)
         tokenizer = AutoTokenizer.from_pretrained(
-            model_name, token=hf_token, use_fast=True, local_files_only=True,
+            model_name,
+            token=hf_token,
+            use_fast=True,
+            local_files_only=True,
         )
 
     log.info("Loading PubMedBERT encoder: %s", model_name)
     try:
         encoder = AutoModel.from_pretrained(
-            model_name, token=hf_token, torch_dtype=torch.float32,
+            model_name,
+            token=hf_token,
+            torch_dtype=torch.float32,
         )
     except Exception as _e:
         log.warning("HF Hub unavailable (%s). Loading encoder from local cache.", _e)
         encoder = AutoModel.from_pretrained(
-            model_name, token=hf_token, torch_dtype=torch.float32, local_files_only=True,
+            model_name,
+            token=hf_token,
+            torch_dtype=torch.float32,
+            local_files_only=True,
         )
 
     peft_config = LoraConfig(
-        task_type      = TaskType.FEATURE_EXTRACTION,
-        r              = lora_cfg.r,
-        lora_alpha     = lora_cfg.lora_alpha,
-        lora_dropout   = lora_cfg.lora_dropout,
-        bias           = lora_cfg.bias,
-        target_modules = lora_cfg.target_modules,
+        task_type=TaskType.FEATURE_EXTRACTION,
+        r=lora_cfg.r,
+        lora_alpha=lora_cfg.lora_alpha,
+        lora_dropout=lora_cfg.lora_dropout,
+        bias=lora_cfg.bias,
+        target_modules=lora_cfg.target_modules,
     )
     encoder = get_peft_model(encoder, peft_config)
 
@@ -213,10 +236,11 @@ def load_bert_model(
     _LORA_MODE = os.getenv("FL_LORA_MODE", "standard").strip().lower()
     if _LORA_MODE == "dual":
         from peft import LoraConfig as _LocalLoraConfig
+
         _local_config = _LocalLoraConfig(
             task_type=peft_config.task_type,
-            r=4,                        # Half the rank of global (r=8)
-            lora_alpha=8,               # alpha = r for local adapter
+            r=4,  # Half the rank of global (r=8)
+            lora_alpha=8,  # alpha = r for local adapter
             target_modules=list(peft_config.target_modules),
             lora_dropout=0.0,
             bias="none",
@@ -224,12 +248,14 @@ def load_bert_model(
         encoder.add_adapter("local", _local_config)
         encoder.set_adapter("default")  # Ensure global is active after setup
         _local_count = sum(
-            1 for name, _ in encoder.named_parameters()
+            1
+            for name, _ in encoder.named_parameters()
             if "local" in name and "lora_" in name
         )
         log.info(
             "Dual LoRA: global adapter r=8 (DP-SGD) + local adapter r=4 "
-            "(%d modules, no DP, never transmitted)", _local_count
+            "(%d modules, no DP, never transmitted)",
+            _local_count,
         )
     elif _LORA_MODE == "ffa":
         _frozen = 0
@@ -245,15 +271,19 @@ def load_bert_model(
     model = PLMICDModel(encoder=encoder, num_labels=num_labels, hidden_size=hidden_size)
 
     trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    total     = sum(p.numel() for p in model.parameters())
+    total = sum(p.numel() for p in model.parameters())
     log.info(
         "PLMICDModel: %d labels | trainable=%d (%.3f%% of total=%d)",
-        num_labels, trainable, 100 * trainable / max(total, 1), total,
+        num_labels,
+        trainable,
+        100 * trainable / max(total, 1),
+        total,
     )
     return model, tokenizer
 
 
 # ── Dataset ────────────────────────────────────────────────────────────────────
+
 
 class ICD10MultiLabelDataset(Dataset):
     """
@@ -276,18 +306,24 @@ class ICD10MultiLabelDataset(Dataset):
         for text, lv in zip(texts, label_vectors):
             enc = tokenizer(
                 text,
-                max_length     = max_length,
-                truncation     = True,
-                padding        = "max_length",
-                return_tensors = "pt",
+                max_length=max_length,
+                truncation=True,
+                padding="max_length",
+                return_tensors="pt",
             )
-            self.items.append({
-                "input_ids":      enc["input_ids"].squeeze(0),
-                "attention_mask": enc["attention_mask"].squeeze(0),
-                "labels":         torch.tensor(lv, dtype=torch.float32),
-            })
+            self.items.append(
+                {
+                    "input_ids": enc["input_ids"].squeeze(0),
+                    "attention_mask": enc["attention_mask"].squeeze(0),
+                    "labels": torch.tensor(lv, dtype=torch.float32),
+                }
+            )
 
-        log.info("ICD10MultiLabelDataset: %d examples, max_length=%d", len(self.items), max_length)
+        log.info(
+            "ICD10MultiLabelDataset: %d examples, max_length=%d",
+            len(self.items),
+            max_length,
+        )
 
     def __len__(self) -> int:
         return len(self.items)
@@ -297,7 +333,7 @@ class ICD10MultiLabelDataset(Dataset):
 
 
 def build_bert_dataset(
-    examples: list[Any],   # list[TrainingExample] — lazy import to avoid circular dep
+    examples: list[Any],  # list[TrainingExample] — lazy import to avoid circular dep
     label_index: dict[str, int],
     tokenizer: PreTrainedTokenizerBase,
     max_length: int = DEFAULT_MAX_SEQ_LEN,
@@ -315,7 +351,9 @@ def build_bert_dataset(
                      Must equal the model's num_labels for shape compatibility.
     """
     num_labels = num_labels if num_labels > 0 else len(label_index)
-    max_length = min(max_length, 512)  # PubMedBERT/BERT hardcap: max_position_embeddings=512
+    max_length = min(
+        max_length, 512
+    )  # PubMedBERT/BERT hardcap: max_position_embeddings=512
     texts: list[str] = []
     label_vectors: list[list[int]] = []
 
@@ -332,6 +370,7 @@ def build_bert_dataset(
 
 
 # ── Training loop ──────────────────────────────────────────────────────────────
+
 
 def train_bert_one_round(
     model: PLMICDModel,
@@ -364,11 +403,13 @@ def train_bert_one_round(
     proximal_mu = train_cfg.proximal_mu
     if proximal_mu > 0.0:
         _global_ref = [
-            p.detach().float().clone()
-            for p in model.parameters()
-            if p.requires_grad
+            p.detach().float().clone() for p in model.parameters() if p.requires_grad
         ]
-        log.info("FedProx BERT active: μ=%.4f | %d trainable tensors.", proximal_mu, len(_global_ref))
+        log.info(
+            "FedProx BERT active: μ=%.4f | %d trainable tensors.",
+            proximal_mu,
+            len(_global_ref),
+        )
     else:
         _global_ref = None
 
@@ -376,16 +417,19 @@ def train_bert_one_round(
     # DP requires batch_size=1 and accum_steps=1 so each clip_grad_norm_ call sees
     # exactly one sample's gradient — making batch-level clipping equivalent to
     # per-sample clipping. This is the same constraint applied in model_setup.py (LLM).
-    effective_batch_size  = 1 if dp_active else train_cfg.batch_size
+    effective_batch_size = 1 if dp_active else train_cfg.batch_size
     effective_accum_steps = 1 if dp_active else train_cfg.gradient_accum_steps
 
     if dp_active:
         log.info(
             "BERT DP-SGD active: σ=%.2f | C=%.4f | δ=%s | batch=1 | accum=1 (per-sample clipping)",
-            train_cfg.noise_multiplier, train_cfg.max_grad_norm, train_cfg.target_delta,
+            train_cfg.noise_multiplier,
+            train_cfg.max_grad_norm,
+            train_cfg.target_delta,
         )
         try:
             from opacus.accountants import RDPAccountant
+
             dp_accountant = RDPAccountant()
         except ImportError:
             log.warning("opacus not installed — ε accounting disabled for BERT.")
@@ -393,8 +437,9 @@ def train_bert_one_round(
     else:
         dp_accountant = None
 
-    dataset = build_bert_dataset(examples, label_index, tokenizer, max_length,
-                                num_labels=model.num_labels)
+    dataset = build_bert_dataset(
+        examples, label_index, tokenizer, max_length, num_labels=model.num_labels
+    )
     n_total = max(len(dataset), 1)
     if dp_active:
         # WOR subsampling: draw k = q*n fresh indices each call (no fixed seed)
@@ -407,42 +452,49 @@ def train_bert_one_round(
         sampler = SubsetRandomSampler(subset_indices)
         dataloader = DataLoader(
             dataset,
-            batch_size = effective_batch_size,
-            sampler    = sampler,
-            drop_last  = False,
-            pin_memory = torch.cuda.is_available(),
+            batch_size=effective_batch_size,
+            sampler=sampler,
+            drop_last=False,
+            pin_memory=torch.cuda.is_available(),
         )
-        log.info("BERT DP subsampling: k=%d/%d samples (q=%.4f)", k, n_total, dp_sample_rate)
+        log.info(
+            "BERT DP subsampling: k=%d/%d samples (q=%.4f)", k, n_total, dp_sample_rate
+        )
     else:
         dp_sample_rate = 1.0
         dataloader = DataLoader(
             dataset,
-            batch_size = effective_batch_size,
-            shuffle    = True,
-            drop_last  = False,
-            pin_memory = torch.cuda.is_available(),
+            batch_size=effective_batch_size,
+            shuffle=True,
+            drop_last=False,
+            pin_memory=torch.cuda.is_available(),
         )
 
     optimizer = AdamW(
         filter(lambda p: p.requires_grad, model.parameters()),
-        lr           = train_cfg.learning_rate,
-        weight_decay = train_cfg.weight_decay,
-        betas        = (0.9, 0.95),
-        eps          = 1e-8,
+        lr=train_cfg.learning_rate,
+        weight_decay=train_cfg.weight_decay,
+        betas=(0.9, 0.95),
+        eps=1e-8,
     )
-    total_steps  = max(1, len(dataloader) * train_cfg.num_epochs // effective_accum_steps)
+    total_steps = max(
+        1, len(dataloader) * train_cfg.num_epochs // effective_accum_steps
+    )
     warmup_steps = max(1, int(total_steps * train_cfg.warmup_ratio))
-    scheduler    = CosineAnnealingLR(
-        optimizer, T_max=max(1, total_steps - warmup_steps),
+    scheduler = CosineAnnealingLR(
+        optimizer,
+        T_max=max(1, total_steps - warmup_steps),
         eta_min=train_cfg.learning_rate * 0.1,
     )
 
     amp_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-    scaler    = torch.amp.GradScaler("cuda", enabled=train_cfg.use_amp and amp_dtype == torch.float16)
+    scaler = torch.amp.GradScaler(
+        "cuda", enabled=train_cfg.use_amp and amp_dtype == torch.float16
+    )
 
     model.train()
     cumulative_loss = 0.0
-    global_step     = 0
+    global_step = 0
     optimizer.zero_grad()
 
     # Fase 0 instrumentation (observation-only — never influences clip/noise/
@@ -454,17 +506,19 @@ def train_bert_one_round(
     _last_post_clip_norms: dict[str, float] = {}
 
     for epoch in range(train_cfg.num_epochs):
-        epoch_loss    = 0.0
+        epoch_loss = 0.0
         valid_batches = 0
-        accum_count   = 0
+        accum_count = 0
 
         for step, batch in enumerate(dataloader):
-            input_ids      = batch["input_ids"].to(device)
+            input_ids = batch["input_ids"].to(device)
             attention_mask = batch["attention_mask"].to(device)
-            labels         = batch["labels"].to(device)
+            labels = batch["labels"].to(device)
 
             with torch.amp.autocast("cuda", dtype=amp_dtype, enabled=train_cfg.use_amp):
-                out = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+                out = model(
+                    input_ids=input_ids, attention_mask=attention_mask, labels=labels
+                )
                 ce_loss = out["loss"]
                 if proximal_mu > 0.0 and _global_ref is not None:
                     prox_term = sum(
@@ -474,24 +528,30 @@ def train_bert_one_round(
                             _global_ref,
                         )
                     )
-                    loss_scaled = (ce_loss + (proximal_mu / 2) * prox_term) / effective_accum_steps
+                    loss_scaled = (
+                        ce_loss + (proximal_mu / 2) * prox_term
+                    ) / effective_accum_steps
                 else:
                     loss_scaled = ce_loss / effective_accum_steps
 
             raw_loss = ce_loss.item()
             if not math.isfinite(raw_loss):
-                log.warning("Non-finite loss (%.4g) at step %d — batch skipped.", raw_loss, step)
+                log.warning(
+                    "Non-finite loss (%.4g) at step %d — batch skipped.", raw_loss, step
+                )
                 continue
 
             scaler.scale(loss_scaled).backward()
-            epoch_loss    += raw_loss
+            epoch_loss += raw_loss
             valid_batches += 1
-            accum_count   += 1
+            accum_count += 1
 
             if accum_count % effective_accum_steps == 0:
                 scaler.unscale_(optimizer)
                 if _log_grad_norms:
-                    _last_pre_clip_norms = snapshot_group_norms(model.named_parameters())
+                    _last_pre_clip_norms = snapshot_group_norms(
+                        model.named_parameters()
+                    )
                 total_norm = torch.nn.utils.clip_grad_norm_(
                     filter(lambda p: p.requires_grad, model.parameters()),
                     train_cfg.max_grad_norm,
@@ -502,7 +562,8 @@ def train_bert_one_round(
                             if p.requires_grad and p.grad is not None:
                                 noise = torch.normal(
                                     mean=0.0,
-                                    std=train_cfg.max_grad_norm * train_cfg.noise_multiplier,
+                                    std=train_cfg.max_grad_norm
+                                    * train_cfg.noise_multiplier,
                                     size=p.grad.shape,
                                     device=p.grad.device,
                                     dtype=p.grad.dtype,
@@ -514,11 +575,15 @@ def train_bert_one_round(
                             sample_rate=dp_sample_rate,
                         )
                 if _log_grad_norms:
-                    _last_post_clip_norms = snapshot_group_norms(model.named_parameters())
+                    _last_post_clip_norms = snapshot_group_norms(
+                        model.named_parameters()
+                    )
                 if math.isfinite(float(total_norm)):
                     scaler.step(optimizer)
                 else:
-                    log.warning("Non-finite grad norm at step %d — skipped.", global_step)
+                    log.warning(
+                        "Non-finite grad norm at step %d — skipped.", global_step
+                    )
                 scaler.update()
                 optimizer.zero_grad()
                 accum_count = 0
@@ -527,7 +592,9 @@ def train_bert_one_round(
                 global_step += 1
                 log.info(
                     "BERT Epoch %d/%d | step %d | loss=%.4f | lr=%.2e",
-                    epoch + 1, train_cfg.num_epochs, global_step,
+                    epoch + 1,
+                    train_cfg.num_epochs,
+                    global_step,
                     epoch_loss / max(valid_batches, 1),
                     optimizer.param_groups[0]["lr"],
                 )
@@ -537,7 +604,8 @@ def train_bert_one_round(
             if _log_grad_norms:
                 _last_pre_clip_norms = snapshot_group_norms(model.named_parameters())
             total_norm = torch.nn.utils.clip_grad_norm_(
-                filter(lambda p: p.requires_grad, model.parameters()), train_cfg.max_grad_norm
+                filter(lambda p: p.requires_grad, model.parameters()),
+                train_cfg.max_grad_norm,
             )
             if dp_active and math.isfinite(float(total_norm)):
                 with torch.no_grad():
@@ -545,7 +613,8 @@ def train_bert_one_round(
                         if p.requires_grad and p.grad is not None:
                             noise = torch.normal(
                                 mean=0.0,
-                                std=train_cfg.max_grad_norm * train_cfg.noise_multiplier,
+                                std=train_cfg.max_grad_norm
+                                * train_cfg.noise_multiplier,
                                 size=p.grad.shape,
                                 device=p.grad.device,
                                 dtype=p.grad.dtype,
@@ -565,30 +634,39 @@ def train_bert_one_round(
             global_step += 1
 
         avg_epoch_loss = epoch_loss / max(valid_batches, 1)
-        log.info("BERT Epoch %d/%d completed — loss=%.4f", epoch + 1, train_cfg.num_epochs, avg_epoch_loss)
+        log.info(
+            "BERT Epoch %d/%d completed — loss=%.4f",
+            epoch + 1,
+            train_cfg.num_epochs,
+            avg_epoch_loss,
+        )
         cumulative_loss += avg_epoch_loss
 
     avg_loss = cumulative_loss / max(train_cfg.num_epochs, 1)
-    metrics  = {"train_loss": round(avg_loss, 6)}
+    metrics = {"train_loss": round(avg_loss, 6)}
 
     if _log_grad_norms:
         import json as _json
-        metrics["grad_norms_pre_clip"]        = _json.dumps(_last_pre_clip_norms)
+
+        metrics["grad_norms_pre_clip"] = _json.dumps(_last_pre_clip_norms)
         metrics["grad_norms_post_clip_noise"] = _json.dumps(_last_post_clip_norms)
-        metrics["clip_threshold"]             = train_cfg.max_grad_norm
-        metrics["effective_lr"]               = optimizer.param_groups[0]["lr"]
+        metrics["clip_threshold"] = train_cfg.max_grad_norm
+        metrics["effective_lr"] = optimizer.param_groups[0]["lr"]
 
     if dp_active and dp_accountant is not None:
         try:
             epsilon = dp_accountant.get_epsilon(delta=train_cfg.target_delta)
-            metrics["dp_epsilon"]          = round(float(epsilon), 4)
-            metrics["dp_delta"]            = train_cfg.target_delta
+            metrics["dp_epsilon"] = round(float(epsilon), 4)
+            metrics["dp_delta"] = train_cfg.target_delta
             metrics["dp_noise_multiplier"] = train_cfg.noise_multiplier
-            metrics["dp_sample_rate"]      = dp_sample_rate
+            metrics["dp_sample_rate"] = dp_sample_rate
             metrics["dp_steps_this_round"] = global_step
             log.info(
                 "BERT DP: ε=%.4f | δ=%s | σ=%.2f | steps=%d",
-                epsilon, train_cfg.target_delta, train_cfg.noise_multiplier, global_step,
+                epsilon,
+                train_cfg.target_delta,
+                train_cfg.noise_multiplier,
+                global_step,
             )
         except Exception as exc:
             log.warning("Error computing BERT DP ε: %s", exc)
@@ -598,6 +676,7 @@ def train_bert_one_round(
 
 
 # ── Flower parameter utilities ─────────────────────────────────────────────────
+
 
 def get_bert_parameters(model: PLMICDModel) -> list[np.ndarray]:
     """
@@ -626,7 +705,7 @@ def set_bert_parameters(model: PLMICDModel, parameters: list[np.ndarray]) -> Non
     set_peft_model_state_dict(model.encoder, new_lora_state)
 
     head_tensors = parameters[n_lora:]
-    head_params  = [*model.label_attention.parameters(), *model.classifier.parameters()]
+    head_params = [*model.label_attention.parameters(), *model.classifier.parameters()]
     if len(head_params) != len(head_tensors):
         raise ValueError(
             f"Head shape mismatch: model has {len(head_params)} tensors, "
@@ -638,5 +717,6 @@ def set_bert_parameters(model: PLMICDModel, parameters: list[np.ndarray]) -> Non
 
     log.info(
         "BERT weights updated: %d LoRA tensors + %d head tensors.",
-        n_lora, len(head_params),
+        n_lora,
+        len(head_params),
     )

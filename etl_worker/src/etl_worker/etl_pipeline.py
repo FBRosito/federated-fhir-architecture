@@ -33,9 +33,9 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-import pandas as pd
 import httpx
-from fhir.resources.bundle import Bundle, BundleEntry, BundleEntryRequest
+import pandas as pd
+from fhir.resources.bundle import Bundle
 from fhir.resources.composition import Composition
 from fhir.resources.condition import Condition
 from fhir.resources.documentreference import DocumentReference
@@ -52,15 +52,39 @@ log = logging.getLogger("etl_pipeline")
 
 # ── FHIR constants ─────────────────────────────────────────────────────────────
 
-LOINC_PROGRESS_NOTE = {"system": "http://loinc.org", "code": "11506-3", "display": "Progress note"}
-LOINC_DISCHARGE_SUMMARY = {"system": "http://loinc.org", "code": "18842-5", "display": "Discharge summary"}
-SNOMED_ENCOUNTER = {"system": "http://snomed.info/sct", "code": "371531000", "display": "Report of clinical encounter"}
+LOINC_PROGRESS_NOTE = {
+    "system": "http://loinc.org",
+    "code": "11506-3",
+    "display": "Progress note",
+}
+LOINC_DISCHARGE_SUMMARY = {
+    "system": "http://loinc.org",
+    "code": "18842-5",
+    "display": "Discharge summary",
+}
+SNOMED_ENCOUNTER = {
+    "system": "http://snomed.info/sct",
+    "code": "371531000",
+    "display": "Report of clinical encounter",
+}
 
 COND_CLINICAL_ACTIVE = {
-    "coding": [{"system": "http://terminology.hl7.org/CodeSystem/condition-clinical", "code": "active", "display": "Active"}]
+    "coding": [
+        {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-clinical",
+            "code": "active",
+            "display": "Active",
+        }
+    ]
 }
 COND_VER_CONFIRMED = {
-    "coding": [{"system": "http://terminology.hl7.org/CodeSystem/condition-ver-status", "code": "confirmed", "display": "Confirmed"}]
+    "coding": [
+        {
+            "system": "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+            "code": "confirmed",
+            "display": "Confirmed",
+        }
+    ]
 }
 
 # ── Diagnosis → ICD-10 mapping ─────────────────────────────────────────────────
@@ -69,33 +93,43 @@ COND_VER_CONFIRMED = {
 
 ICD10_MAP: dict[str, tuple[str, str]] = {
     # Cardiovascular
-    "Hipertensão arterial sistêmica":      ("I10",   "Hipertensão essencial (primária)"),
-    "Insuficiência cardíaca congestiva":   ("I50.0",  "Insuficiência cardíaca congestiva"),
-    "Angina instável":                     ("I20.0",  "Angina instável"),
-    "Doença valvar aórtica":               ("I35.9",  "Transtorno da valva aórtica, não especificado"),
-    "AVC isquêmico":                       ("I63.9",  "Infarto cerebral, não especificado"),
-    "Infarto agudo do miocárdio":          ("I21.9",  "Infarto agudo do miocárdio, não especificado"),
+    "Hipertensão arterial sistêmica": ("I10", "Hipertensão essencial (primária)"),
+    "Insuficiência cardíaca congestiva": ("I50.0", "Insuficiência cardíaca congestiva"),
+    "Angina instável": ("I20.0", "Angina instável"),
+    "Doença valvar aórtica": ("I35.9", "Transtorno da valva aórtica, não especificado"),
+    "AVC isquêmico": ("I63.9", "Infarto cerebral, não especificado"),
+    "Infarto agudo do miocárdio": (
+        "I21.9",
+        "Infarto agudo do miocárdio, não especificado",
+    ),
     # Respiratory
-    "DPOC exacerbado":                     ("J44.1",  "DPOC com exacerbação aguda"),
-    "Asma brônquica":                      ("J45.9",  "Asma, não especificada"),
-    "Pneumonia":                           ("J18.9",  "Pneumonia não especificada"),
-    "Derrame pleural":                     ("J90",    "Derrame pleural não classificado em outra parte"),
-    "Tromboembolismo pulmonar":            ("I26.9",  "Embolia pulmonar sem cor pulmonale agudo"),
+    "DPOC exacerbado": ("J44.1", "DPOC com exacerbação aguda"),
+    "Asma brônquica": ("J45.9", "Asma, não especificada"),
+    "Pneumonia": ("J18.9", "Pneumonia não especificada"),
+    "Derrame pleural": ("J90", "Derrame pleural não classificado em outra parte"),
+    "Tromboembolismo pulmonar": ("I26.9", "Embolia pulmonar sem cor pulmonale agudo"),
     # Metabolic / Endocrine
-    "Diabetes mellitus tipo 2":            ("E11.9",  "Diabetes mellitus tipo 2 sem complicações"),
-    "Hipotireoidismo":                     ("E03.9",  "Hipotireoidismo, não especificado"),
-    "Síndrome metabólica":                 ("E88.81", "Síndrome metabólica"),
-    "Hiperparatireoidismo primário":       ("E21.0",  "Hiperparatireoidismo primário"),
-    "Síndrome dos ovários policísticos":   ("E28.2",  "Síndrome dos ovários policísticos"),
+    "Diabetes mellitus tipo 2": ("E11.9", "Diabetes mellitus tipo 2 sem complicações"),
+    "Hipotireoidismo": ("E03.9", "Hipotireoidismo, não especificado"),
+    "Síndrome metabólica": ("E88.81", "Síndrome metabólica"),
+    "Hiperparatireoidismo primário": ("E21.0", "Hiperparatireoidismo primário"),
+    "Síndrome dos ovários policísticos": ("E28.2", "Síndrome dos ovários policísticos"),
     # General / Other
-    "Lombalgia aguda":                     ("M54.5",  "Dor lombar baixa"),
-    "Infecção do trato urinário":          ("N39.0",  "Infecção do trato urinário, local não especificado"),
-    "Artrite reumatoide":                  ("M05.9",  "Artrite reumatoide soropositiva, não especificada"),
-    "Depressão":                           ("F32.9",  "Episódio depressivo, não especificado"),
-    "Doença renal crônica":                ("N18.3",  "Doença renal crônica, estágio 3"),
+    "Lombalgia aguda": ("M54.5", "Dor lombar baixa"),
+    "Infecção do trato urinário": (
+        "N39.0",
+        "Infecção do trato urinário, local não especificado",
+    ),
+    "Artrite reumatoide": (
+        "M05.9",
+        "Artrite reumatoide soropositiva, não especificada",
+    ),
+    "Depressão": ("F32.9", "Episódio depressivo, não especificado"),
+    "Doença renal crônica": ("N18.3", "Doença renal crônica, estágio 3"),
 }
 
 # ── Data loading ───────────────────────────────────────────────────────────────
+
 
 def load_data(data_path: Path, partition_id: int = -1) -> pd.DataFrame:
     """
@@ -109,18 +143,29 @@ def load_data(data_path: Path, partition_id: int = -1) -> pd.DataFrame:
         DataFrame with evolutions for the requested partition(s).
     """
     df = pd.read_csv(data_path, dtype={"partition_id": int})
-    log.info("CSV loaded: %d records across %d partitions", len(df), df["partition_id"].nunique())
+    log.info(
+        "CSV loaded: %d records across %d partitions",
+        len(df),
+        df["partition_id"].nunique(),
+    )
 
     if partition_id >= 0:
         df = df[df["partition_id"] == partition_id].copy()
         if df.empty:
             log.warning("No records found for partition %d.", partition_id)
         else:
-            log.info("Partition %d (%s): %d records", partition_id, df["partition_label"].iloc[0], len(df))
+            log.info(
+                "Partition %d (%s): %d records",
+                partition_id,
+                df["partition_label"].iloc[0],
+                len(df),
+            )
 
     return df
 
+
 # ── FHIR resource builders ─────────────────────────────────────────────────────
+
 
 def _build_condition_note(row: pd.Series) -> str:
     """
@@ -132,6 +177,7 @@ def _build_condition_note(row: pd.Series) -> str:
     if all_codes_val and all_codes_val != "nan":
         note += f" all_codes={all_codes_val}"
     return note
+
 
 def build_patient(row: pd.Series) -> tuple[str, Patient]:
     """
@@ -147,17 +193,21 @@ def build_patient(row: pd.Series) -> tuple[str, Patient]:
     family = name_parts[-1] if len(name_parts) > 1 else name_parts[0]
     given = name_parts[:-1] if len(name_parts) > 1 else []
 
-    patient = Patient.model_validate({
-        "resourceType": "Patient",
-        "id": patient_uid,
-        "identifier": [{
-            "system": "http://hospital.example.org/patients",
-            "value": row["patient_id"],
-        }],
-        "name": [{"family": family, "given": given, "text": row["patient_name"]}],
-        "gender": row["gender"],
-        "birthDate": row["birth_date"],
-    })
+    patient = Patient.model_validate(
+        {
+            "resourceType": "Patient",
+            "id": patient_uid,
+            "identifier": [
+                {
+                    "system": "http://hospital.example.org/patients",
+                    "value": row["patient_id"],
+                }
+            ],
+            "name": [{"family": family, "given": given, "text": row["patient_name"]}],
+            "gender": row["gender"],
+            "birthDate": row["birth_date"],
+        }
+    )
     return urn, patient
 
 
@@ -182,30 +232,38 @@ def build_condition(row: pd.Series, patient_urn: str) -> tuple[str, Condition]:
         log.warning("Unmapped diagnosis: '%s'. Using Z03.89.", raw)
         icd_code, icd_display = "Z03.89", "Sem diagnóstico relevante relevado"
 
-    condition = Condition.model_validate({
-        "resourceType": "Condition",
-        "id": cond_uid,
-        "clinicalStatus": COND_CLINICAL_ACTIVE,
-        "verificationStatus": COND_VER_CONFIRMED,
-        "category": [{
-            "coding": [{
-                "system": "http://terminology.hl7.org/CodeSystem/condition-category",
-                "code": "encounter-diagnosis",
-                "display": "Encounter Diagnosis",
-            }]
-        }],
-        "code": {
-            "coding": [{
-                "system": "http://hl7.org/fhir/sid/icd-10",
-                "code": icd_code,
-                "display": icd_display,
-            }],
-            "text": raw,
-        },
-        "subject": {"reference": patient_urn},
-        "recordedDate": row["record_date"],
-        "note": [{"text": _build_condition_note(row)}],
-    })
+    condition = Condition.model_validate(
+        {
+            "resourceType": "Condition",
+            "id": cond_uid,
+            "clinicalStatus": COND_CLINICAL_ACTIVE,
+            "verificationStatus": COND_VER_CONFIRMED,
+            "category": [
+                {
+                    "coding": [
+                        {
+                            "system": "http://terminology.hl7.org/CodeSystem/condition-category",
+                            "code": "encounter-diagnosis",
+                            "display": "Encounter Diagnosis",
+                        }
+                    ]
+                }
+            ],
+            "code": {
+                "coding": [
+                    {
+                        "system": "http://hl7.org/fhir/sid/icd-10",
+                        "code": icd_code,
+                        "display": icd_display,
+                    }
+                ],
+                "text": raw,
+            },
+            "subject": {"reference": patient_urn},
+            "recordedDate": row["record_date"],
+            "note": [{"text": _build_condition_note(row)}],
+        }
+    )
     return urn, condition
 
 
@@ -232,22 +290,26 @@ def build_composition(
         f"</div>"
     )
 
-    composition = Composition.model_validate({
-        "resourceType": "Composition",
-        "id": comp_uid,
-        "status": "final",
-        "type": {"coding": [LOINC_PROGRESS_NOTE]},
-        "subject": [{"reference": patient_urn}],
-        "date": row["record_date"],
-        "author": [{"display": practitioner_display}],
-        "title": f"Evolução Clínica — {row['partition_label'].capitalize()}",
-        "section": [{
-            "title": "Evolução e Conduta",
-            "code": {"coding": [LOINC_PROGRESS_NOTE]},
-            "text": {"status": "generated", "div": xhtml_text},
-            "entry": [{"reference": condition_urn}],
-        }],
-    })
+    composition = Composition.model_validate(
+        {
+            "resourceType": "Composition",
+            "id": comp_uid,
+            "status": "final",
+            "type": {"coding": [LOINC_PROGRESS_NOTE]},
+            "subject": [{"reference": patient_urn}],
+            "date": row["record_date"],
+            "author": [{"display": practitioner_display}],
+            "title": f"Evolução Clínica — {row['partition_label'].capitalize()}",
+            "section": [
+                {
+                    "title": "Evolução e Conduta",
+                    "code": {"coding": [LOINC_PROGRESS_NOTE]},
+                    "text": {"status": "generated", "div": xhtml_text},
+                    "entry": [{"reference": condition_urn}],
+                }
+            ],
+        }
+    )
     return urn, composition
 
 
@@ -263,32 +325,38 @@ def build_document_reference(
     doc_uid = str(uuid.uuid4())
     urn = f"urn:uuid:{doc_uid}"
 
-    encoded_text = base64.b64encode(row["clinical_text"].encode("utf-8")).decode("ascii")
+    encoded_text = base64.b64encode(row["clinical_text"].encode("utf-8")).decode(
+        "ascii"
+    )
 
-    doc_ref = DocumentReference.model_validate({
-        "resourceType": "DocumentReference",
-        "id": doc_uid,
-        "status": "current",
-        "docStatus": "final",
-        "type": {"coding": [LOINC_PROGRESS_NOTE]},
-        "category": [{"coding": [SNOMED_ENCOUNTER]}],
-        "subject": {"reference": patient_urn},
-        "date": row["record_date"],
-        "author": [{"display": str(row.get("practitioner", ""))}],
-        "description": f"Evolução clínica — {row['patient_name']} — {row['record_date'][:10]}",
-        "content": [{
-            "attachment": {
-                "contentType": "text/plain;charset=UTF-8",
-                "data": encoded_text,
-                "title": f"Evolução {row['record_date'][:10]}",
-                "creation": row["record_date"],
-            }
-        }],
-        # relatesTo.target requires a reference to another DocumentReference (FHIR R4 §10.3.2).
-        # The link with the Composition is maintained via Composition.section.entry (build_composition).
-
-    })
+    doc_ref = DocumentReference.model_validate(
+        {
+            "resourceType": "DocumentReference",
+            "id": doc_uid,
+            "status": "current",
+            "docStatus": "final",
+            "type": {"coding": [LOINC_PROGRESS_NOTE]},
+            "category": [{"coding": [SNOMED_ENCOUNTER]}],
+            "subject": {"reference": patient_urn},
+            "date": row["record_date"],
+            "author": [{"display": str(row.get("practitioner", ""))}],
+            "description": f"Evolução clínica — {row['patient_name']} — {row['record_date'][:10]}",
+            "content": [
+                {
+                    "attachment": {
+                        "contentType": "text/plain;charset=UTF-8",
+                        "data": encoded_text,
+                        "title": f"Evolução {row['record_date'][:10]}",
+                        "creation": row["record_date"],
+                    }
+                }
+            ],
+            # relatesTo.target requires a reference to another DocumentReference (FHIR R4 §10.3.2).
+            # The link with the Composition is maintained via Composition.section.entry (build_composition).
+        }
+    )
     return urn, doc_ref
+
 
 def build_discharge_summary_doc_ref(
     row: pd.Series,
@@ -309,30 +377,35 @@ def build_discharge_summary_doc_ref(
 
     encoded = base64.b64encode(summary_text.encode("utf-8")).decode("ascii")
 
-    doc_ref = DocumentReference.model_validate({
-        "resourceType": "DocumentReference",
-        "id": doc_uid,
-        "status": "current",
-        "docStatus": "final",
-        "type": {"coding": [LOINC_DISCHARGE_SUMMARY]},
-        "category": [{"coding": [SNOMED_ENCOUNTER]}],
-        "subject": {"reference": patient_urn},
-        "date": row["record_date"],
-        "author": [{"display": str(row.get("practitioner", ""))}],
-        "description": f"Discharge summary — {row['patient_name']} — {row['record_date'][:10]}",
-        "content": [{
-            "attachment": {
-                "contentType": "text/plain;charset=UTF-8",
-                "data": encoded,
-                "title": f"Discharge summary {row['record_date'][:10]}",
-                "creation": row["record_date"],
-            }
-        }],
-    })
+    doc_ref = DocumentReference.model_validate(
+        {
+            "resourceType": "DocumentReference",
+            "id": doc_uid,
+            "status": "current",
+            "docStatus": "final",
+            "type": {"coding": [LOINC_DISCHARGE_SUMMARY]},
+            "category": [{"coding": [SNOMED_ENCOUNTER]}],
+            "subject": {"reference": patient_urn},
+            "date": row["record_date"],
+            "author": [{"display": str(row.get("practitioner", ""))}],
+            "description": f"Discharge summary — {row['patient_name']} — {row['record_date'][:10]}",
+            "content": [
+                {
+                    "attachment": {
+                        "contentType": "text/plain;charset=UTF-8",
+                        "data": encoded,
+                        "title": f"Discharge summary {row['record_date'][:10]}",
+                        "creation": row["record_date"],
+                    }
+                }
+            ],
+        }
+    )
     return urn, doc_ref
 
 
 # ── Transaction Bundle assembly ────────────────────────────────────────────────
+
 
 def _entry(urn: str, resource: Any) -> dict[str, Any]:
     """Assembles one Transaction Bundle entry from a FHIR resource."""
@@ -347,10 +420,14 @@ def _entry(urn: str, resource: Any) -> dict[str, Any]:
 
 
 def build_transaction_bundle(
-    patient: Patient, patient_urn: str,
-    condition: Condition, condition_urn: str,
-    composition: Composition, composition_urn: str,
-    doc_ref: DocumentReference, doc_ref_urn: str,
+    patient: Patient,
+    patient_urn: str,
+    condition: Condition,
+    condition_urn: str,
+    composition: Composition,
+    composition_urn: str,
+    doc_ref: DocumentReference,
+    doc_ref_urn: str,
     discharge_doc: DocumentReference | None = None,
     discharge_doc_urn: str | None = None,
 ) -> Bundle:
@@ -370,13 +447,17 @@ def build_transaction_bundle(
     if discharge_doc is not None and discharge_doc_urn is not None:
         entries.append(_entry(discharge_doc_urn, discharge_doc))
 
-    return Bundle.model_validate({
-        "resourceType": "Bundle",
-        "type": "transaction",
-        "entry": entries,
-    })
+    return Bundle.model_validate(
+        {
+            "resourceType": "Bundle",
+            "type": "transaction",
+            "entry": entries,
+        }
+    )
+
 
 # ── FHIR R4 submission ───────────────────────────────────────────────────────
+
 
 def _post_payload(
     payload: bytes,
@@ -400,7 +481,9 @@ def _post_payload(
     while True:
         attempt += 1
         try:
-            response = httpx.post(fhir_url, content=payload, headers=headers, timeout=30)
+            response = httpx.post(
+                fhir_url, content=payload, headers=headers, timeout=30
+            )
 
             content_type = response.headers.get("content-type", "")
             is_fhir_json = "json" in content_type or "fhir" in content_type
@@ -420,13 +503,19 @@ def _post_payload(
                 response=response,
             )
 
-        except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError) as exc:
+        except (
+            httpx.ConnectError,
+            httpx.TimeoutException,
+            httpx.HTTPStatusError,
+        ) as exc:
             remaining = deadline - time.monotonic()
             is_permanent_client_error = (
                 isinstance(exc, httpx.HTTPStatusError)
                 and exc.response.status_code < 500
-                and ("json" in exc.response.headers.get("content-type", "")
-                     or "fhir" in exc.response.headers.get("content-type", ""))
+                and (
+                    "json" in exc.response.headers.get("content-type", "")
+                    or "fhir" in exc.response.headers.get("content-type", "")
+                )
             )
             if is_permanent_client_error or remaining <= 0:
                 raise
@@ -434,7 +523,11 @@ def _post_payload(
             log.warning(
                 "Attempt %d [%s] — FHIR R4 unavailable (%s). "
                 "Retrying in %.0f s (%.0f s remaining).",
-                attempt, label, exc, retry_interval, remaining,
+                attempt,
+                label,
+                exc,
+                retry_interval,
+                remaining,
             )
             time.sleep(min(retry_interval, remaining))
 
@@ -448,7 +541,9 @@ def post_bundle(
 ) -> dict[str, Any]:
     """Serialises and sends a Transaction Bundle via POST with retries."""
     payload = bundle.model_dump_json(exclude_none=True).encode("utf-8")
-    return _post_payload(payload, fhir_url, retry_interval=retry_interval, timeout_total=timeout_total)
+    return _post_payload(
+        payload, fhir_url, retry_interval=retry_interval, timeout_total=timeout_total
+    )
 
 
 def _summarise_response(resp: dict[str, Any], patient_id: str) -> None:
@@ -465,7 +560,9 @@ def _summarise_response(resp: dict[str, Any], patient_id: str) -> None:
         else:
             log.info("[%s] %s → %s", patient_id, status, location)
 
+
 # ── Pre-built bundles mode ─────────────────────────────────────────────────────
+
 
 def run_from_bundles(bundles_dir: Path, fhir_url: str) -> None:
     """
@@ -498,7 +595,8 @@ def run_from_bundles(bundles_dir: Path, fhir_url: str) -> None:
 
     log.info(
         "Pipeline completed: %d/%d bundles sent successfully.",
-        success, success + errors,
+        success,
+        success + errors,
     )
     if errors:
         log.warning("%d bundle(s) failed — check the logs above.", errors)
@@ -506,6 +604,7 @@ def run_from_bundles(bundles_dir: Path, fhir_url: str) -> None:
 
 
 # ── Main pipeline ──────────────────────────────────────────────────────────────
+
 
 def process_row(row: pd.Series, fhir_url: str, dry_run: bool = False) -> bool:
     """
@@ -520,22 +619,29 @@ def process_row(row: pd.Series, fhir_url: str, dry_run: bool = False) -> bool:
         True on success, False on error.
     """
     try:
-        patient_urn,   patient    = build_patient(row)
-        condition_urn, condition  = build_condition(row, patient_urn)
-        comp_urn,      composition = build_composition(row, patient_urn, condition_urn)
-        doc_urn,       doc_ref    = build_document_reference(row, patient_urn, comp_urn)
+        patient_urn, patient = build_patient(row)
+        condition_urn, condition = build_condition(row, patient_urn)
+        comp_urn, composition = build_composition(row, patient_urn, condition_urn)
+        doc_urn, doc_ref = build_document_reference(row, patient_urn, comp_urn)
 
         bundle = build_transaction_bundle(
-            patient, patient_urn,
-            condition, condition_urn,
-            composition, comp_urn,
-            doc_ref, doc_urn,
+            patient,
+            patient_urn,
+            condition,
+            condition_urn,
+            composition,
+            comp_urn,
+            doc_ref,
+            doc_urn,
         )
 
         if dry_run:
-            log.info("[DRY-RUN] Bundle for %s — %d entries, %d bytes",
-                     row["patient_id"], len(bundle.entry),
-                     len(bundle.model_dump_json(exclude_none=True)))
+            log.info(
+                "[DRY-RUN] Bundle for %s — %d entries, %d bytes",
+                row["patient_id"],
+                len(bundle.entry),
+                len(bundle.model_dump_json(exclude_none=True)),
+            )
             return True
 
         resp = post_bundle(bundle, fhir_url)
@@ -543,10 +649,17 @@ def process_row(row: pd.Series, fhir_url: str, dry_run: bool = False) -> bool:
         return True
 
     except httpx.HTTPStatusError as exc:
-        log.error("HTTP %s processing %s: %s",
-                  exc.response.status_code, row["patient_id"], exc.response.text[:300])
+        log.error(
+            "HTTP %s processing %s: %s",
+            exc.response.status_code,
+            row["patient_id"],
+            exc.response.text[:300],
+        )
     except httpx.ConnectError:
-        log.error("No connection to FHIR at %s. Check that the fhir server is running.", fhir_url)
+        log.error(
+            "No connection to FHIR at %s. Check that the fhir server is running.",
+            fhir_url,
+        )
     except Exception as exc:  # noqa: BLE001
         log.exception("Unexpected error processing %s: %s", row["patient_id"], exc)
 
@@ -583,16 +696,20 @@ def run(
     total = success + errors
     log.info(
         "Pipeline completed: %d/%d records sent successfully%s.",
-        success, total,
+        success,
+        total,
         " [DRY-RUN]" if dry_run else "",
     )
     if errors:
         log.warning("%d record(s) failed — check the logs above.", errors)
         sys.exit(1)
 
+
 # ── CLI entry point ────────────────────────────────────────────────────────────
 
+
 def main() -> None:
+    """CLI entry point: load pre-built bundles or build from CSV, then POST to FHIR."""
     parser = argparse.ArgumentParser(
         description="ETL: loads pre-built FHIR bundles or builds from CSV → FHIR R4",
     )
@@ -601,15 +718,21 @@ def main() -> None:
         type=Path,
         default=Path(os.getenv("ETL_BUNDLES_PATH", "")),
         help="Directory with pre-built FHIR bundles (bundle_*.json). "
-             "When set, ignores --data and --partition.",
+        "When set, ignores --data and --partition.",
     )
     parser.add_argument(
         "--data",
         type=Path,
-        default=Path(os.getenv(
-            "ETL_DATA_PATH",
-            str(Path(__file__).parent.parent.parent / "data" / "clinical_evolutions.csv"),
-        )),
+        default=Path(
+            os.getenv(
+                "ETL_DATA_PATH",
+                str(
+                    Path(__file__).parent.parent.parent
+                    / "data"
+                    / "clinical_evolutions.csv"
+                ),
+            )
+        ),
         help="Path to the clinical evolutions CSV (only used without --bundles-dir).",
     )
     parser.add_argument(
@@ -633,13 +756,20 @@ def main() -> None:
     log.info("=== ETL Pipeline started ===")
 
     if args.bundles_dir and args.bundles_dir.is_dir():
-        log.info("Mode: pre-built bundles | Dir: %s | FHIR: %s", args.bundles_dir, args.fhir_url)
+        log.info(
+            "Mode: pre-built bundles | Dir: %s | FHIR: %s",
+            args.bundles_dir,
+            args.fhir_url,
+        )
         run_from_bundles(bundles_dir=args.bundles_dir, fhir_url=args.fhir_url)
     else:
-        log.info("Mode: CSV | Data: %s | FHIR: %s | Partition: %s | Dry-run: %s",
-                 args.data, args.fhir_url,
-                 args.partition if args.partition >= 0 else "all",
-                 args.dry_run)
+        log.info(
+            "Mode: CSV | Data: %s | FHIR: %s | Partition: %s | Dry-run: %s",
+            args.data,
+            args.fhir_url,
+            args.partition if args.partition >= 0 else "all",
+            args.dry_run,
+        )
         run(
             data_path=args.data,
             fhir_url=args.fhir_url,

@@ -1,7 +1,7 @@
 [project]
 name = "etl-worker"
 version = "0.1.0"
-description = "Add your description here"
+description = "ETL worker — transforms MIMIC-IV CSV exports into HL7 FHIR R4 transaction bundles"
 readme = "README.md"
 authors = [
     { name = "Anonymous", email = "anonymous@review.placeholder" }

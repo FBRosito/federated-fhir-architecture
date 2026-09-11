@@ -70,11 +70,12 @@ log = logging.getLogger(__name__)
 
 # ── Defaults ───────────────────────────────────────────────────────────────────
 
-_LOG_DIR    = Path(os.getenv("FL_LOG_DIR",   "evaluation/logs"))
-_CLIENT_ID  = os.getenv("FL_LOG_CLIENT_ID",  "client-0")
-_PARTITION  = int(os.getenv("FL_PARTITION_ID", "-1"))
+_LOG_DIR = Path(os.getenv("FL_LOG_DIR", "evaluation/logs"))
+_CLIENT_ID = os.getenv("FL_LOG_CLIENT_ID", "client-0")
+_PARTITION = int(os.getenv("FL_PARTITION_ID", "-1"))
 
 # ── Data structures ────────────────────────────────────────────────────────────
+
 
 @dataclass
 class MetricsReport:
@@ -84,27 +85,28 @@ class MetricsReport:
     All average fields are computed by scikit-learn with
     `zero_division=0` to avoid warnings for classes with no predictions.
     """
+
     # ── Micro (treats each sample equally — affected by frequent classes)
-    precision_micro:    float = 0.0
-    recall_micro:       float = 0.0
-    f1_micro:           float = 0.0
+    precision_micro: float = 0.0
+    recall_micro: float = 0.0
+    f1_micro: float = 0.0
 
     # ── Macro (simple mean per class — penalises imbalance)
-    precision_macro:    float = 0.0
-    recall_macro:       float = 0.0
-    f1_macro:           float = 0.0
+    precision_macro: float = 0.0
+    recall_macro: float = 0.0
+    f1_macro: float = 0.0
 
     # ── Weighted (class mean weighted by support)
     precision_weighted: float = 0.0
-    recall_weighted:    float = 0.0
-    f1_weighted:        float = 0.0
+    recall_weighted: float = 0.0
+    f1_weighted: float = 0.0
 
     # ── Samples
-    accuracy:           float = 0.0
-    n_samples:          int   = 0
-    n_correct:          int   = 0
-    n_classes_true:     int   = 0   # unique classes in y_true
-    n_classes_pred:     int   = 0   # unique classes in y_pred
+    accuracy: float = 0.0
+    n_samples: int = 0
+    n_correct: int = 0
+    n_classes_true: int = 0  # unique classes in y_true
+    n_classes_pred: int = 0  # unique classes in y_pred
 
     # ── Per class (dict {icd10_code: {precision, recall, f1, support}})
     per_class: dict[str, dict[str, float]] = field(default_factory=dict)
@@ -119,55 +121,57 @@ class OperationalRecord:
     One CSV row — captures the state of a federated round.
     Fields follow the column order in the CSV file.
     """
+
     # ── Temporal and identification context
-    timestamp:              str   = ""
-    round_number:           int   = 0
-    client_id:              str   = ""
-    partition_id:           int   = -1
-    phase:                  str   = "fit"   # "fit" | "evaluate"
+    timestamp: str = ""
+    round_number: int = 0
+    client_id: str = ""
+    partition_id: int = -1
+    phase: str = "fit"  # "fit" | "evaluate"
 
     # ── ICD-10 classification metrics
-    accuracy:               float = 0.0
-    precision_micro:        float = 0.0
-    recall_micro:           float = 0.0
-    f1_micro:               float = 0.0
-    precision_macro:        float = 0.0
-    recall_macro:           float = 0.0
-    f1_macro:               float = 0.0
-    precision_weighted:     float = 0.0
-    recall_weighted:        float = 0.0
-    f1_weighted:            float = 0.0
-    n_samples:              int   = 0
-    n_correct:              int   = 0
-    n_classes_true:         int   = 0
-    n_classes_pred:         int   = 0
+    accuracy: float = 0.0
+    precision_micro: float = 0.0
+    recall_micro: float = 0.0
+    f1_micro: float = 0.0
+    precision_macro: float = 0.0
+    recall_macro: float = 0.0
+    f1_macro: float = 0.0
+    precision_weighted: float = 0.0
+    recall_weighted: float = 0.0
+    f1_weighted: float = 0.0
+    n_samples: int = 0
+    n_correct: int = 0
+    n_classes_true: int = 0
+    n_classes_pred: int = 0
 
     # ── Federated communication volume
-    total_comm_rounds:      int   = 0     # cumulative rounds in the session
-    params_sent_mb:         float = 0.0   # LoRA weights sent this round (MB)
-    params_received_mb:     float = 0.0   # LoRA weights received this round (MB)
-    cumulative_data_mb:     float = 0.0   # total data in the session (MB)
+    total_comm_rounds: int = 0  # cumulative rounds in the session
+    params_sent_mb: float = 0.0  # LoRA weights sent this round (MB)
+    params_received_mb: float = 0.0  # LoRA weights received this round (MB)
+    cumulative_data_mb: float = 0.0  # total data in the session (MB)
 
     # ── Processing time and resources
-    gpu_processing_time_s:  float = 0.0   # round time (GPU Event or perf_counter)
-    gpu_memory_peak_mb:     float = 0.0   # peak VRAM allocated this round (MB)
-    gpu_memory_current_mb:  float = 0.0   # VRAM allocated at end of round (MB)
-    gpu_utilization_pct:    float = 0.0   # GPU utilisation % (nvidia-smi, best-effort)
-    cpu_usage_pct:          float = 0.0   # CPU % at log time
-    ram_usage_gb:           float = 0.0   # process RAM usage (GB)
+    gpu_processing_time_s: float = 0.0  # round time (GPU Event or perf_counter)
+    gpu_memory_peak_mb: float = 0.0  # peak VRAM allocated this round (MB)
+    gpu_memory_current_mb: float = 0.0  # VRAM allocated at end of round (MB)
+    gpu_utilization_pct: float = 0.0  # GPU utilisation % (nvidia-smi, best-effort)
+    cpu_usage_pct: float = 0.0  # CPU % at log time
+    ram_usage_gb: float = 0.0  # process RAM usage (GB)
 
     # ── Model training/evaluation metrics (forwarded from fl_client)
-    train_loss:             float = 0.0
-    train_perplexity:       float = 0.0
-    eval_loss:              float = 0.0
-    eval_perplexity:        float = 0.0
+    train_loss: float = 0.0
+    train_perplexity: float = 0.0
+    eval_loss: float = 0.0
+    eval_perplexity: float = 0.0
 
     # ── Environment
-    has_gpu:                bool  = False
-    gpu_name:               str   = "none"
+    has_gpu: bool = False
+    gpu_name: str = "none"
 
 
 # ── GPUTimer ───────────────────────────────────────────────────────────────────
+
 
 class GPUTimer:
     """
@@ -195,23 +199,25 @@ class GPUTimer:
 
     def __init__(self) -> None:
         self.elapsed_ms: float = 0.0
-        self.elapsed_s:  float = 0.0
+        self.elapsed_s: float = 0.0
         self._use_cuda = torch.cuda.is_available()
         self._start_event = None
-        self._end_event   = None
-        self._cpu_start:  float = 0.0
+        self._end_event = None
+        self._cpu_start: float = 0.0
 
     def start(self) -> "GPUTimer":
+        """Start timing (CUDA events when available, CPU perf_counter otherwise)."""
         if self._use_cuda:
             torch.cuda.reset_peak_memory_stats()
             self._start_event = torch.cuda.Event(enable_timing=True)
-            self._end_event   = torch.cuda.Event(enable_timing=True)
+            self._end_event = torch.cuda.Event(enable_timing=True)
             self._start_event.record()
         else:
             self._cpu_start = time.perf_counter()
         return self
 
     def stop(self) -> "GPUTimer":
+        """Stop timing and populate ``elapsed_ms`` / ``elapsed_s``."""
         if self._use_cuda and self._start_event is not None:
             self._end_event.record()
             torch.cuda.synchronize()
@@ -244,6 +250,7 @@ class GPUTimer:
 
 # ── DataVolumeTracker ──────────────────────────────────────────────────────────
 
+
 class DataVolumeTracker:
     """
     Tracks data volume (bytes/MB) transmitted during a federated session —
@@ -257,11 +264,11 @@ class DataVolumeTracker:
     """
 
     def __init__(self) -> None:
-        self._lock          = threading.Lock()
-        self._sent_bytes:   int = 0
-        self._recv_bytes:   int = 0
-        self._round_sent:   int = 0   # bytes sent this round
-        self._round_recv:   int = 0   # bytes received this round
+        self._lock = threading.Lock()
+        self._sent_bytes: int = 0
+        self._recv_bytes: int = 0
+        self._round_sent: int = 0  # bytes sent this round
+        self._round_recv: int = 0  # bytes received this round
 
     def record_sent(self, parameters: list[np.ndarray]) -> float:
         """
@@ -275,8 +282,8 @@ class DataVolumeTracker:
         """
         nbytes = sum(a.nbytes for a in parameters)
         with self._lock:
-            self._sent_bytes  += nbytes
-            self._round_sent   = nbytes
+            self._sent_bytes += nbytes
+            self._round_sent = nbytes
         mb = nbytes / 1024**2
         log.debug("Sent: %.3f MB (%d tensors)", mb, len(parameters))
         return mb
@@ -293,30 +300,35 @@ class DataVolumeTracker:
         """
         nbytes = sum(a.nbytes for a in parameters)
         with self._lock:
-            self._recv_bytes  += nbytes
-            self._round_recv   = nbytes
+            self._recv_bytes += nbytes
+            self._round_recv = nbytes
         mb = nbytes / 1024**2
         log.debug("Received: %.3f MB (%d tensors)", mb, len(parameters))
         return mb
 
     @property
     def round_sent_mb(self) -> float:
+        """MB sent to the server in the current round."""
         return self._round_sent / 1024**2
 
     @property
     def round_received_mb(self) -> float:
+        """MB received from the server in the current round."""
         return self._round_recv / 1024**2
 
     @property
     def cumulative_mb(self) -> float:
+        """Total MB transmitted (sent + received) across the whole session."""
         return (self._sent_bytes + self._recv_bytes) / 1024**2
 
     @property
     def total_sent_mb(self) -> float:
+        """Total MB sent across the whole session."""
         return self._sent_bytes / 1024**2
 
     @property
     def total_received_mb(self) -> float:
+        """Total MB received across the whole session."""
         return self._recv_bytes / 1024**2
 
     def reset_round(self) -> None:
@@ -327,6 +339,7 @@ class DataVolumeTracker:
 
 
 # ── Classification metric functions ───────────────────────────────────────────
+
 
 def compute_classification_metrics(
     y_true: list[str],
@@ -362,9 +375,9 @@ def compute_classification_metrics(
         )
 
     report = MetricsReport()
-    report.n_samples      = len(y_true)
-    report.n_correct      = int(accuracy_score(y_true, y_pred, normalize=False))
-    report.accuracy       = round(float(accuracy_score(y_true, y_pred)), 6)
+    report.n_samples = len(y_true)
+    report.n_correct = int(accuracy_score(y_true, y_pred, normalize=False))
+    report.accuracy = round(float(accuracy_score(y_true, y_pred)), 6)
     report.n_classes_true = len(set(y_true))
     report.n_classes_pred = len(set(y_pred))
 
@@ -373,24 +386,24 @@ def compute_classification_metrics(
         y_true, y_pred, average="micro", labels=labels, zero_division=0
     )
     report.precision_micro = round(float(p), 6)
-    report.recall_micro    = round(float(r), 6)
-    report.f1_micro        = round(float(f), 6)
+    report.recall_micro = round(float(r), 6)
+    report.f1_micro = round(float(f), 6)
 
     # ── Macro ──────────────────────────────────────────────────────────────────
     p, r, f, _ = precision_recall_fscore_support(
         y_true, y_pred, average="macro", labels=labels, zero_division=0
     )
     report.precision_macro = round(float(p), 6)
-    report.recall_macro    = round(float(r), 6)
-    report.f1_macro        = round(float(f), 6)
+    report.recall_macro = round(float(r), 6)
+    report.f1_macro = round(float(f), 6)
 
     # ── Weighted ───────────────────────────────────────────────────────────────
     p, r, f, _ = precision_recall_fscore_support(
         y_true, y_pred, average="weighted", labels=labels, zero_division=0
     )
     report.precision_weighted = round(float(p), 6)
-    report.recall_weighted    = round(float(r), 6)
-    report.f1_weighted        = round(float(f), 6)
+    report.recall_weighted = round(float(r), 6)
+    report.f1_weighted = round(float(f), 6)
 
     # ── Per class ──────────────────────────────────────────────────────────────
     full_report: dict = classification_report(
@@ -401,9 +414,9 @@ def compute_classification_metrics(
     report.per_class = {
         code: {
             "precision": round(float(vals["precision"]), 6),
-            "recall":    round(float(vals["recall"]),    6),
-            "f1":        round(float(vals["f1-score"]),  6),
-            "support":   int(vals["support"]),
+            "recall": round(float(vals["recall"]), 6),
+            "f1": round(float(vals["f1-score"]), 6),
+            "support": int(vals["support"]),
         }
         for code, vals in full_report.items()
         if code not in skip_keys
@@ -416,13 +429,17 @@ def compute_classification_metrics(
             error_counts[(yt, yp)] = error_counts.get((yt, yp), 0) + 1
     report.top_errors = [
         (yt, yp, cnt)
-        for (yt, yp), cnt in sorted(error_counts.items(), key=lambda x: -x[1])[:top_k_errors]
+        for (yt, yp), cnt in sorted(error_counts.items(), key=lambda x: -x[1])[
+            :top_k_errors
+        ]
     ]
 
     return report
 
 
-def print_classification_report(report: MetricsReport, title: str = "ICD-10 Evaluation") -> None:
+def print_classification_report(
+    report: MetricsReport, title: str = "ICD-10 Evaluation"
+) -> None:
     """
     Prints a formatted report to the terminal with classification metrics.
 
@@ -436,19 +453,30 @@ def print_classification_report(report: MetricsReport, title: str = "ICD-10 Eval
     print(sep)
     print(f"  Samples      : {report.n_samples:>6}  |  Correct: {report.n_correct:>6}")
     print(f"  Accuracy     : {report.accuracy:>8.4f}")
-    print(f"  Classes (GT) : {report.n_classes_true:>6}  |  Classes (pred): {report.n_classes_pred}")
+    print(
+        f"  Classes (GT) : {report.n_classes_true:>6}  |  Classes (pred): {report.n_classes_pred}"
+    )
     print(sep)
     print(f"  {'Metric':<22} {'Micro':>8}  {'Macro':>8}  {'Weighted':>9}")
     print(f"  {'─'*22} {'─'*8}  {'─'*8}  {'─'*9}")
-    print(f"  {'Precision':<22} {report.precision_micro:>8.4f}  {report.precision_macro:>8.4f}  {report.precision_weighted:>9.4f}")
-    print(f"  {'Recall':<22} {report.recall_micro:>8.4f}  {report.recall_macro:>8.4f}  {report.recall_weighted:>9.4f}")
-    print(f"  {'F1-Score':<22} {report.f1_micro:>8.4f}  {report.f1_macro:>8.4f}  {report.f1_weighted:>9.4f}")
+    print(
+        f"  {'Precision':<22} {report.precision_micro:>8.4f}  "
+        f"{report.precision_macro:>8.4f}  {report.precision_weighted:>9.4f}"
+    )
+    print(
+        f"  {'Recall':<22} {report.recall_micro:>8.4f}  {report.recall_macro:>8.4f}  {report.recall_weighted:>9.4f}"
+    )
+    print(
+        f"  {'F1-Score':<22} {report.f1_micro:>8.4f}  {report.f1_macro:>8.4f}  {report.f1_weighted:>9.4f}"
+    )
 
     if report.per_class:
         print(f"\n  {'ICD-10':<14} {'Prec':>7}  {'Rec':>7}  {'F1':>7}  {'Support':>8}")
         print(f"  {'─'*14} {'─'*7}  {'─'*7}  {'─'*7}  {'─'*8}")
         for code, m in sorted(report.per_class.items(), key=lambda x: -x[1]["support"]):
-            print(f"  {code:<14} {m['precision']:>7.4f}  {m['recall']:>7.4f}  {m['f1']:>7.4f}  {m['support']:>8}")
+            print(
+                f"  {code:<14} {m['precision']:>7.4f}  {m['recall']:>7.4f}  {m['f1']:>7.4f}  {m['support']:>8}"
+            )
 
     if report.top_errors:
         print(f"\n  Top-{len(report.top_errors)} most frequent errors:")
@@ -462,6 +490,7 @@ def print_classification_report(report: MetricsReport, title: str = "ICD-10 Eval
 
 # ── System metric collection ───────────────────────────────────────────────────
 
+
 def _get_gpu_utilization() -> float:
     """
     Queries GPU utilisation (%) via nvidia-smi.
@@ -470,11 +499,19 @@ def _get_gpu_utilization() -> float:
     """
     try:
         result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=2,
+            [
+                "nvidia-smi",
+                "--query-gpu=utilization.gpu",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=2,
         )
         if result.returncode == 0:
-            lines = [l.strip() for l in result.stdout.strip().splitlines() if l.strip()]
+            lines = [
+                ln.strip() for ln in result.stdout.strip().splitlines() if ln.strip()
+            ]
             if lines:
                 return float(lines[0])
     except Exception:
@@ -490,11 +527,12 @@ def _get_system_stats() -> dict[str, float]:
     proc = psutil.Process()
     return {
         "cpu_usage_pct": round(psutil.cpu_percent(interval=None), 1),
-        "ram_usage_gb":  round(proc.memory_info().rss / 1024**3, 3),
+        "ram_usage_gb": round(proc.memory_info().rss / 1024**3, 3),
     }
 
 
 # ── FederatedRunLogger ─────────────────────────────────────────────────────────
+
 
 class FederatedRunLogger:
     """
@@ -528,15 +566,15 @@ class FederatedRunLogger:
 
     def __init__(
         self,
-        csv_path:    Path | str = _LOG_DIR / "federated_run.csv",
-        client_id:   str = _CLIENT_ID,
+        csv_path: Path | str = _LOG_DIR / "federated_run.csv",
+        client_id: str = _CLIENT_ID,
         partition_id: int = _PARTITION,
     ) -> None:
-        self.csv_path    = Path(csv_path)
-        self.client_id   = client_id
+        self.csv_path = Path(csv_path)
+        self.client_id = client_id
         self.partition_id = partition_id
-        self._lock       = threading.Lock()
-        self._comm_rounds = 0              # cumulative rounds this session
+        self._lock = threading.Lock()
+        self._comm_rounds = 0  # cumulative rounds this session
         self._ensure_csv()
 
     def _ensure_csv(self) -> None:
@@ -550,14 +588,14 @@ class FederatedRunLogger:
 
     def log_round(
         self,
-        round_number:      int,
-        phase:             str = "fit",
-        y_true:            list[str] | None = None,
-        y_pred:            list[str] | None = None,
-        gpu_timer:         GPUTimer | None = None,
-        data_tracker:      DataVolumeTracker | None = None,
-        training_metrics:  dict[str, float] | None = None,
-        labels:            list[str] | None = None,
+        round_number: int,
+        phase: str = "fit",
+        y_true: list[str] | None = None,
+        y_pred: list[str] | None = None,
+        gpu_timer: GPUTimer | None = None,
+        data_tracker: DataVolumeTracker | None = None,
+        training_metrics: dict[str, float] | None = None,
+        labels: list[str] | None = None,
     ) -> OperationalRecord:
         """
         Records one row in the CSV with round metrics.
@@ -590,53 +628,55 @@ class FederatedRunLogger:
                 log.warning("Error computing classification metrics: %s", exc)
 
         # ── Timer and GPU memory ───────────────────────────────────────────────
-        timer = gpu_timer or GPUTimer()   # empty timer if not provided
-        gpu_time_s    = round(timer.elapsed_s,           4)
-        gpu_peak_mb   = round(timer.peak_memory_mb,      2)
-        gpu_curr_mb   = round(timer.current_memory_mb,   2)
-        gpu_util      = _get_gpu_utilization()
+        timer = gpu_timer or GPUTimer()  # empty timer if not provided
+        gpu_time_s = round(timer.elapsed_s, 4)
+        gpu_peak_mb = round(timer.peak_memory_mb, 2)
+        gpu_curr_mb = round(timer.current_memory_mb, 2)
+        gpu_util = _get_gpu_utilization()
 
         # ── Communication volume ───────────────────────────────────────────────
-        sent_mb     = round(data_tracker.round_sent_mb,     3) if data_tracker else 0.0
-        recv_mb     = round(data_tracker.round_received_mb, 3) if data_tracker else 0.0
-        cumul_mb    = round(data_tracker.cumulative_mb,     3) if data_tracker else 0.0
+        sent_mb = round(data_tracker.round_sent_mb, 3) if data_tracker else 0.0
+        recv_mb = round(data_tracker.round_received_mb, 3) if data_tracker else 0.0
+        cumul_mb = round(data_tracker.cumulative_mb, 3) if data_tracker else 0.0
 
         record = OperationalRecord(
-            timestamp             = datetime.now(timezone.utc).isoformat(timespec="seconds"),
-            round_number          = round_number,
-            client_id             = self.client_id,
-            partition_id          = self.partition_id,
-            phase                 = phase,
-            accuracy              = clf.accuracy,
-            precision_micro       = clf.precision_micro,
-            recall_micro          = clf.recall_micro,
-            f1_micro              = clf.f1_micro,
-            precision_macro       = clf.precision_macro,
-            recall_macro          = clf.recall_macro,
-            f1_macro              = clf.f1_macro,
-            precision_weighted    = clf.precision_weighted,
-            recall_weighted       = clf.recall_weighted,
-            f1_weighted           = clf.f1_weighted,
-            n_samples             = clf.n_samples,
-            n_correct             = clf.n_correct,
-            n_classes_true        = clf.n_classes_true,
-            n_classes_pred        = clf.n_classes_pred,
-            total_comm_rounds     = self._comm_rounds,
-            params_sent_mb        = sent_mb,
-            params_received_mb    = recv_mb,
-            cumulative_data_mb    = cumul_mb,
-            gpu_processing_time_s = gpu_time_s,
-            gpu_memory_peak_mb    = gpu_peak_mb,
-            gpu_memory_current_mb = gpu_curr_mb,
-            gpu_utilization_pct   = gpu_util,
-            cpu_usage_pct         = sys_stats["cpu_usage_pct"],
-            ram_usage_gb          = sys_stats["ram_usage_gb"],
-            train_loss            = float(tm.get("train_loss",       0.0)),
-            train_perplexity      = float(tm.get("train_perplexity", 0.0)),
-            eval_loss             = float(tm.get("eval_loss",        0.0)),
-            eval_perplexity       = float(tm.get("eval_perplexity",  0.0)),
-            has_gpu               = torch.cuda.is_available(),
-            gpu_name              = torch.cuda.get_device_name(0) if torch.cuda.is_available() else "none",
+            timestamp=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            round_number=round_number,
+            client_id=self.client_id,
+            partition_id=self.partition_id,
+            phase=phase,
+            accuracy=clf.accuracy,
+            precision_micro=clf.precision_micro,
+            recall_micro=clf.recall_micro,
+            f1_micro=clf.f1_micro,
+            precision_macro=clf.precision_macro,
+            recall_macro=clf.recall_macro,
+            f1_macro=clf.f1_macro,
+            precision_weighted=clf.precision_weighted,
+            recall_weighted=clf.recall_weighted,
+            f1_weighted=clf.f1_weighted,
+            n_samples=clf.n_samples,
+            n_correct=clf.n_correct,
+            n_classes_true=clf.n_classes_true,
+            n_classes_pred=clf.n_classes_pred,
+            total_comm_rounds=self._comm_rounds,
+            params_sent_mb=sent_mb,
+            params_received_mb=recv_mb,
+            cumulative_data_mb=cumul_mb,
+            gpu_processing_time_s=gpu_time_s,
+            gpu_memory_peak_mb=gpu_peak_mb,
+            gpu_memory_current_mb=gpu_curr_mb,
+            gpu_utilization_pct=gpu_util,
+            cpu_usage_pct=sys_stats["cpu_usage_pct"],
+            ram_usage_gb=sys_stats["ram_usage_gb"],
+            train_loss=float(tm.get("train_loss", 0.0)),
+            train_perplexity=float(tm.get("train_perplexity", 0.0)),
+            eval_loss=float(tm.get("eval_loss", 0.0)),
+            eval_perplexity=float(tm.get("eval_perplexity", 0.0)),
+            has_gpu=torch.cuda.is_available(),
+            gpu_name=(
+                torch.cuda.get_device_name(0) if torch.cuda.is_available() else "none"
+            ),
         )
 
         self._write_row(record)
@@ -644,10 +684,14 @@ class FederatedRunLogger:
         log.info(
             "Round %d [%s] | F1-micro=%.4f | F1-macro=%.4f | "
             "time=%.2fs | GPU_peak=%.1fMB | data=↑%.2fMB ↓%.2fMB | loss=%.4f",
-            round_number, phase,
-            clf.f1_micro, clf.f1_macro,
-            gpu_time_s, gpu_peak_mb,
-            sent_mb, recv_mb,
+            round_number,
+            phase,
+            clf.f1_micro,
+            clf.f1_macro,
+            gpu_time_s,
+            gpu_peak_mb,
+            sent_mb,
+            recv_mb,
             float(tm.get("train_loss", tm.get("eval_loss", 0.0))),
         )
 
@@ -682,10 +726,10 @@ class FederatedRunLogger:
             self.csv_path,
             parse_dates=["timestamp"],
             dtype={
-                "round_number":   "int32",
-                "partition_id":   "int32",
-                "n_samples":      "int32",
-                "n_correct":      "int32",
+                "round_number": "int32",
+                "partition_id": "int32",
+                "n_samples": "int32",
+                "n_correct": "int32",
                 "total_comm_rounds": "int32",
             },
         )
@@ -768,15 +812,26 @@ class FederatedRunLogger:
             return df
 
         cols = [
-            "round_number", "phase", "f1_micro", "f1_macro", "accuracy",
-            "train_loss", "eval_loss", "train_perplexity", "eval_perplexity",
-            "gpu_processing_time_s", "cumulative_data_mb",
+            "round_number",
+            "phase",
+            "f1_micro",
+            "f1_macro",
+            "accuracy",
+            "train_loss",
+            "eval_loss",
+            "train_perplexity",
+            "eval_perplexity",
+            "gpu_processing_time_s",
+            "cumulative_data_mb",
         ]
         available = [c for c in cols if c in df.columns]
-        return df[available].sort_values(["round_number", "phase"]).reset_index(drop=True)
+        return (
+            df[available].sort_values(["round_number", "phase"]).reset_index(drop=True)
+        )
 
 
 # ── CLI / demo ─────────────────────────────────────────────────────────────────
+
 
 def _demo_run(csv_path: Path) -> None:
     """
@@ -786,18 +841,21 @@ def _demo_run(csv_path: Path) -> None:
     import random
 
     CODES = ["I10", "I50.0", "J44.1", "J45.9", "E11.9", "E03.9", "M54.5", "F32.9"]
-    rng   = random.Random(42)
+    rng = random.Random(42)
 
-    logger  = FederatedRunLogger(csv_path=csv_path, client_id="demo-node-0", partition_id=0)
+    logger = FederatedRunLogger(
+        csv_path=csv_path, client_id="demo-node-0", partition_id=0
+    )
     tracker = DataVolumeTracker()
 
     # Simulate LoRA weights: 50 tensors of varying sizes (≈ 8B × 0.3% params ≈ 24M params)
     def fake_lora_params(seed: int) -> list[np.ndarray]:
+        """Build deterministic fake LoRA tensors (50 × [256, 64] float32)."""
         rs = np.random.RandomState(seed)
         return [rs.randn(256, 64).astype(np.float32) for _ in range(50)]
 
     for rnd in range(1, 4):
-        global_params  = fake_lora_params(seed=rnd * 10)
+        global_params = fake_lora_params(seed=rnd * 10)
         updated_params = fake_lora_params(seed=rnd * 10 + 1)
         tracker.record_received(global_params)
         tracker.record_sent(updated_params)
@@ -808,31 +866,30 @@ def _demo_run(csv_path: Path) -> None:
         # Simulate gradual improvement: hit probability increases per round
         accuracy_target = 0.4 + rnd * 0.15
         y_pred = [
-            yt if rng.random() < accuracy_target else rng.choice(CODES)
-            for yt in y_true
+            yt if rng.random() < accuracy_target else rng.choice(CODES) for yt in y_true
         ]
 
         # ── Simulated timer (no real GPU) ─────────────────────────────────────
         timer = GPUTimer()
         timer._cpu_start = 0.0
-        timer.elapsed_ms = rng.uniform(800, 2500)   # 0.8–2.5 s simulated
-        timer.elapsed_s  = timer.elapsed_ms / 1000
+        timer.elapsed_ms = rng.uniform(800, 2500)  # 0.8–2.5 s simulated
+        timer.elapsed_s = timer.elapsed_ms / 1000
 
         training_metrics = {
-            "train_loss":       round(1.5 - rnd * 0.3 + rng.uniform(-0.05, 0.05), 4),
-            "train_perplexity": round(4.5 - rnd * 0.8 + rng.uniform(-0.1, 0.1),  2),
-            "eval_loss":        round(1.6 - rnd * 0.25 + rng.uniform(-0.05, 0.05), 4),
-            "eval_perplexity":  round(4.8 - rnd * 0.7 + rng.uniform(-0.1, 0.1),  2),
+            "train_loss": round(1.5 - rnd * 0.3 + rng.uniform(-0.05, 0.05), 4),
+            "train_perplexity": round(4.5 - rnd * 0.8 + rng.uniform(-0.1, 0.1), 2),
+            "eval_loss": round(1.6 - rnd * 0.25 + rng.uniform(-0.05, 0.05), 4),
+            "eval_perplexity": round(4.8 - rnd * 0.7 + rng.uniform(-0.1, 0.1), 2),
         }
 
-        rec = logger.log_round(
-            round_number     = rnd,
-            phase            = "fit",
-            y_true           = y_true,
-            y_pred           = y_pred,
-            gpu_timer        = timer,
-            data_tracker     = tracker,
-            training_metrics = training_metrics,
+        logger.log_round(
+            round_number=rnd,
+            phase="fit",
+            y_true=y_true,
+            y_pred=y_pred,
+            gpu_timer=timer,
+            data_tracker=tracker,
+            training_metrics=training_metrics,
         )
 
         # Display classification report for the last round
@@ -847,12 +904,13 @@ def _demo_run(csv_path: Path) -> None:
 
 
 def main() -> None:
+    """CLI entry point: aggregate per-round metric CSVs into summary tables."""
     import argparse
 
     logging.basicConfig(
-        level   = logging.INFO,
-        format  = "%(asctime)s [%(levelname)s] %(name)s — %(message)s",
-        datefmt = "%Y-%m-%dT%H:%M:%S",
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S",
     )
 
     parser = argparse.ArgumentParser(
@@ -860,14 +918,14 @@ def main() -> None:
     )
     parser.add_argument(
         "--csv",
-        type    = Path,
-        default = _LOG_DIR / "federated_run.csv",
-        help    = "Path to the CSV output file.",
+        type=Path,
+        default=_LOG_DIR / "federated_run.csv",
+        help="Path to the CSV output file.",
     )
     parser.add_argument(
         "--summary",
-        action  = "store_true",
-        help    = "Display summary of an existing CSV without generating new data.",
+        action="store_true",
+        help="Display summary of an existing CSV without generating new data.",
     )
     args = parser.parse_args()
 

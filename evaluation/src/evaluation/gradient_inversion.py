@@ -34,8 +34,12 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from transformers import PreTrainedModel, PreTrainedTokenizerBase
 
 log = logging.getLogger(__name__)
 
@@ -43,14 +47,15 @@ log = logging.getLogger(__name__)
 @dataclass
 class GradientInversionResult:
     """Result of a DLG attack on one example."""
-    original_text:      str
+
+    original_text: str
     reconstructed_text: str
-    grad_mse_ratio:     float   # ||∇dummy - ∇real||² / ||∇real||²
-    rouge_1:            float   # ROUGE-1 between original and reconstructed
-    bertscore_f1:       float   # BERTScore F1
-    n_iterations:       int
-    dp_noise_sigma:     float   # DP noise σ applied (0.0 = no DP)
-    converged:          bool
+    grad_mse_ratio: float  # ||∇dummy - ∇real||² / ||∇real||²
+    rouge_1: float  # ROUGE-1 between original and reconstructed
+    bertscore_f1: float  # BERTScore F1
+    n_iterations: int
+    dp_noise_sigma: float  # DP noise σ applied (0.0 = no DP)
+    converged: bool
 
     def __str__(self) -> str:
         return (
@@ -66,15 +71,16 @@ def _compute_grad_mse_ratio(
     grad_dummy: list,
 ) -> float:
     """Computes ||∇dummy - ∇real||² / ||∇real||² across all LoRA tensors."""
-    import torch
-    numerator   = sum((g_d - g_r).pow(2).sum().item() for g_r, g_d in zip(grad_real, grad_dummy))
+    numerator = sum(
+        (g_d - g_r).pow(2).sum().item() for g_r, g_d in zip(grad_real, grad_dummy)
+    )
     denominator = sum(g_r.pow(2).sum().item() for g_r in grad_real)
     return float(numerator / max(denominator, 1e-12))
 
 
 def run_dlg_attack(
-    model,
-    tokenizer,
+    model: PreTrainedModel,
+    tokenizer: PreTrainedTokenizerBase,
     example_text: str,
     n_iterations: int = 300,
     lr: float = 0.1,
@@ -101,7 +107,6 @@ def run_dlg_attack(
         GradientInversionResult with reconstructed text and metrics.
     """
     import torch
-    import torch.nn.functional as F
 
     model = model.to(device)
     model.eval()
@@ -109,15 +114,15 @@ def run_dlg_attack(
     # ── 1. Extract real gradients ───────────────────────────────────────────
     enc = tokenizer(
         example_text,
-        max_length     = max_length,
-        truncation     = True,
-        padding        = "max_length",
-        return_tensors = "pt",
+        max_length=max_length,
+        truncation=True,
+        padding="max_length",
+        return_tensors="pt",
     ).to(device)
 
-    input_ids      = enc["input_ids"]
+    input_ids = enc["input_ids"]
     attention_mask = enc["attention_mask"]
-    labels         = input_ids.clone()
+    labels = input_ids.clone()
 
     model.zero_grad()
     outputs = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
@@ -133,11 +138,11 @@ def run_dlg_attack(
     # Apply DP to the real gradient (simulates what the server receives)
     if dp_noise_sigma > 0.0:
         with torch.no_grad():
-            total_norm = torch.nn.utils.clip_grad_norm_(
-                trainable_params, max_grad_norm
-            )
+            torch.nn.utils.clip_grad_norm_(trainable_params, max_grad_norm)
             for i, g in enumerate(grad_real):
-                noise = torch.normal(0.0, max_grad_norm * dp_noise_sigma, size=g.shape, device=g.device)
+                noise = torch.normal(
+                    0.0, max_grad_norm * dp_noise_sigma, size=g.shape, device=g.device
+                )
                 grad_real[i] = g + noise
 
     model.zero_grad()
@@ -158,9 +163,9 @@ def run_dlg_attack(
 
         # Forward pass with dummy embeddings
         outputs_dummy = model(
-            inputs_embeds  = dummy_embeds,
-            attention_mask = attention_mask,
-            labels         = labels,
+            inputs_embeds=dummy_embeds,
+            attention_mask=attention_mask,
+            labels=labels,
         )
         outputs_dummy.loss.backward(retain_graph=True)
 
@@ -172,8 +177,7 @@ def run_dlg_attack(
 
         # Minimise distance between dummy and real gradients
         grad_loss = sum(
-            (g_d - g_r).pow(2).mean()
-            for g_r, g_d in zip(grad_real, grad_dummy)
+            (g_d - g_r).pow(2).mean() for g_r, g_d in zip(grad_real, grad_dummy)
         )
         model.zero_grad()
         grad_loss.backward()
@@ -181,8 +185,13 @@ def run_dlg_attack(
 
         if iteration % 50 == 0:
             mse = _compute_grad_mse_ratio(grad_real, grad_dummy)
-            log.debug("DLG iter %d/%d | grad_mse=%.4f | atk_loss=%.4f",
-                      iteration, n_iterations, mse, grad_loss.item())
+            log.debug(
+                "DLG iter %d/%d | grad_mse=%.4f | atk_loss=%.4f",
+                iteration,
+                n_iterations,
+                mse,
+                grad_loss.item(),
+            )
             if mse < 1e-4:
                 converged = True
                 log.info("DLG converged at iteration %d.", iteration)
@@ -192,19 +201,23 @@ def run_dlg_attack(
     with torch.no_grad():
         # Find the nearest token for each optimised embedding
         all_embeds = embedding_layer.weight.detach()  # [vocab_size, d_model]
-        cosine_sim = torch.nn.functional.normalize(dummy_embeds[0], dim=-1) @ \
-                     torch.nn.functional.normalize(all_embeds, dim=-1).T
+        cosine_sim = (
+            torch.nn.functional.normalize(dummy_embeds[0], dim=-1)
+            @ torch.nn.functional.normalize(all_embeds, dim=-1).T
+        )
         best_tokens = cosine_sim.argmax(dim=-1)
         # Mask padding
         best_tokens = best_tokens * attention_mask[0]
-        reconstructed = tokenizer.decode(best_tokens[attention_mask[0].bool()], skip_special_tokens=True)
+        reconstructed = tokenizer.decode(
+            best_tokens[attention_mask[0].bool()], skip_special_tokens=True
+        )
 
     # ── 4. Reconstruction metrics ───────────────────────────────────────────
     grad_mse = _compute_grad_mse_ratio(grad_real, grad_dummy)
 
     # Simple ROUGE-1
     orig_tokens = set(example_text.lower().split())
-    rec_tokens  = set(reconstructed.lower().split())
+    rec_tokens = set(reconstructed.lower().split())
     if orig_tokens or rec_tokens:
         overlap = len(orig_tokens & rec_tokens)
         rouge_1 = 2 * overlap / max(len(orig_tokens) + len(rec_tokens), 1)
@@ -215,30 +228,37 @@ def run_dlg_attack(
     bertscore_f1 = float("nan")
     try:
         from bert_score import score as bert_score_fn
+
         _, _, F = bert_score_fn(
-            [reconstructed], [example_text],
+            [reconstructed],
+            [example_text],
             model_type="microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract-fulltext",
-            lang="en", verbose=False, batch_size=1, rescale_with_baseline=True,
+            lang="en",
+            verbose=False,
+            batch_size=1,
+            rescale_with_baseline=True,
         )
         bertscore_f1 = float(F[0].item())
     except Exception:
         pass
 
     return GradientInversionResult(
-        original_text      = example_text,
-        reconstructed_text = reconstructed,
-        grad_mse_ratio     = round(grad_mse, 6),
-        rouge_1            = round(rouge_1, 4),
-        bertscore_f1       = round(bertscore_f1, 4) if not math.isnan(bertscore_f1) else float("nan"),
-        n_iterations       = n_iterations,
-        dp_noise_sigma     = dp_noise_sigma,
-        converged          = converged,
+        original_text=example_text,
+        reconstructed_text=reconstructed,
+        grad_mse_ratio=round(grad_mse, 6),
+        rouge_1=round(rouge_1, 4),
+        bertscore_f1=(
+            round(bertscore_f1, 4) if not math.isnan(bertscore_f1) else float("nan")
+        ),
+        n_iterations=n_iterations,
+        dp_noise_sigma=dp_noise_sigma,
+        converged=converged,
     )
 
 
 def evaluate_dp_protection(
-    model,
-    tokenizer,
+    model: PreTrainedModel,
+    tokenizer: PreTrainedTokenizerBase,
     examples: list[str],
     sigma_values: list[float],
     max_grad_norm: float = 0.01,
@@ -263,6 +283,7 @@ def evaluate_dp_protection(
         {sigma: [GradientInversionResult, ...]}
     """
     import torch
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     n = min(len(examples), max_samples)
     results: dict[float, list[GradientInversionResult]] = {}
@@ -273,14 +294,14 @@ def evaluate_dp_protection(
         for i, text in enumerate(examples[:n]):
             log.info("  Sample %d/%d...", i + 1, n)
             result = run_dlg_attack(
-                model          = model,
-                tokenizer      = tokenizer,
-                example_text   = text,
-                n_iterations   = n_iterations,
-                dp_noise_sigma = sigma,
-                max_grad_norm  = max_grad_norm,
-                max_length     = max_length,
-                device         = device,
+                model=model,
+                tokenizer=tokenizer,
+                example_text=text,
+                n_iterations=n_iterations,
+                dp_noise_sigma=sigma,
+                max_grad_norm=max_grad_norm,
+                max_length=max_length,
+                device=device,
             )
             sigma_results.append(result)
             log.info("    %s", result)
@@ -290,7 +311,9 @@ def evaluate_dp_protection(
         rouge_scores = [r.rouge_1 for r in sigma_results if not math.isnan(r.rouge_1)]
         log.info(
             "  σ=%.2f | mean ROUGE-1: %.4f (n=%d)",
-            sigma, float(np.mean(rouge_scores)) if rouge_scores else float("nan"), len(rouge_scores),
+            sigma,
+            float(np.mean(rouge_scores)) if rouge_scores else float("nan"),
+            len(rouge_scores),
         )
 
     return results

@@ -1,0 +1,6 @@
+# Development and CI dependencies (pinned)
+black==24.1.0
+flake8==7.0.0
+isort==5.13.2
+pre-commit==4.6.2
+pytest==9.1.1

@@ -1,4 +1,4 @@
-# Artigo 3 — FFA-LoRA (matriz A congelada, só B treinável)
+# Article 3 — FFA-LoRA (matrix A frozen, only B trainable)
 lora_mode: ffa
 clipping_strategy: global
 global_c0: 1.0

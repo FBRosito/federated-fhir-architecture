@@ -59,7 +59,9 @@ def _seeded_rotation(d: int, seed: int, device: torch.device) -> torch.Tensor:
     return torch.from_numpy(Q).to(device)
 
 
-def turbocompress(tensor: torch.Tensor, n_bits: int = 4, seed: int = 0) -> dict[str, Any]:
+def turbocompress(
+    tensor: torch.Tensor, n_bits: int = 4, seed: int = 0
+) -> dict[str, Any]:
     """Compress a LoRA delta tensor using two-stage TurboQuant.
 
     Stage 1 — Rotated Lloyd-Max:
@@ -107,13 +109,16 @@ def turbocompress(tensor: torch.Tensor, n_bits: int = 4, seed: int = 0) -> dict[
     # Deterministic JL matrix from seed (server regenerates the same matrix)
     gen = torch.Generator()
     gen.manual_seed(seed + 1)
-    Phi = torch.randn(chunk, d_proj, generator=gen) / (d_proj ** 0.5)
-    codes2 = (residual @ Phi > 0)  # bool tensor, 1 bit per element
+    Phi = torch.randn(chunk, d_proj, generator=gen) / (d_proj**0.5)
+    codes2 = residual @ Phi > 0  # bool tensor, 1 bit per element
 
     log.debug(
         "turbocompress: shape=%s | n_bits=%d | chunk=%d | d_proj=%d | "
         "stage1_size=%.1f KB | stage2_size=%.1f KB | tail_size=%.1f KB",
-        shape, n_bits, chunk, d_proj,
+        shape,
+        n_bits,
+        chunk,
+        d_proj,
         codes1.numel() * n_bits / 8 / 1024,
         codes2.numel() / 8 / 1024,
         x_tail.numel() * 2 / 1024,  # stored as fp16
@@ -156,7 +161,9 @@ def turbodecompress(c: dict[str, Any]) -> torch.Tensor:
     R = _seeded_rotation(c["chunk"], c["seed"], torch.device("cpu"))
     x_rot_back = x_recon @ R.T
 
-    tail = torch.from_numpy(c["tail"]).float() if c["tail"].size > 0 else torch.tensor([])
+    tail = (
+        torch.from_numpy(c["tail"]).float() if c["tail"].size > 0 else torch.tensor([])
+    )
     x_full = torch.cat([x_rot_back, tail])
 
     # Recover original dtype

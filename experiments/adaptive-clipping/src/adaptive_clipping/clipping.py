@@ -68,7 +68,9 @@ def assert_model_reloaded(
     """
     if previous_fingerprint is None:
         return
-    keep_in_vram = os.environ.get("FL_KEEP_MODEL_IN_VRAM", "false").strip().lower() == "true"
+    keep_in_vram = (
+        os.environ.get("FL_KEEP_MODEL_IN_VRAM", "false").strip().lower() == "true"
+    )
     if keep_in_vram:
         return
     if current_fingerprint == previous_fingerprint:
@@ -270,5 +272,11 @@ class PerLayerClipper:
                     "history": list(values),
                 }
             else:
-                summary[name] = {"mean": 0.0, "std": 0.0, "min": 0.0, "max": 0.0, "history": []}
+                summary[name] = {
+                    "mean": 0.0,
+                    "std": 0.0,
+                    "min": 0.0,
+                    "max": 0.0,
+                    "history": [],
+                }
         return summary

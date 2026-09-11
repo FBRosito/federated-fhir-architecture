@@ -23,26 +23,26 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-import numpy as np
-
 log = logging.getLogger(__name__)
 
 # Colour palette consistent with IEEE/JAMIA publications
 _COLORS = {
-    "centralizado": "#2ca02c",   # green
-    "fedprox":      "#1f77b4",   # blue
-    "fedavg":       "#ff7f0e",   # orange
-    "dp_light":     "#9467bd",   # purple
-    "dp_mod":       "#8c564b",   # brown
-    "dp_strong":    "#e377c2",   # pink
+    "centralizado": "#2ca02c",  # green
+    "fedprox": "#1f77b4",  # blue
+    "fedavg": "#ff7f0e",  # orange
+    "dp_light": "#9467bd",  # purple
+    "dp_mod": "#8c564b",  # brown
+    "dp_strong": "#e377c2",  # pink
 }
 
 
 def _require_matplotlib():
     try:
         import matplotlib
+
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
+
         return plt
     except ImportError:
         raise ImportError("matplotlib not installed. Run: uv add matplotlib")
@@ -50,13 +50,13 @@ def _require_matplotlib():
 
 def curva_epsilon_vs_f1(
     epsilon_values: list[float],
-    f1_values:      list[float],
-    f1_ci_lower:    list[float] | None = None,
-    f1_ci_upper:    list[float] | None = None,
-    baseline_f1:    float | None = None,
-    metric_name:    str = "F1@5",
-    output_path:    str = "figures/epsilon_vs_f1.pdf",
-    title:          str = "Privacy-Utility Tradeoff (FedProx + DP-SGD)",
+    f1_values: list[float],
+    f1_ci_lower: list[float] | None = None,
+    f1_ci_upper: list[float] | None = None,
+    baseline_f1: float | None = None,
+    metric_name: str = "F1@5",
+    output_path: str = "figures/epsilon_vs_f1.pdf",
+    title: str = "Privacy-Utility Tradeoff (FedProx + DP-SGD)",
 ) -> None:
     """
     Plots ε × F1@k curve with confidence interval (shaded area).
@@ -78,16 +78,34 @@ def curva_epsilon_vs_f1(
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     fig, ax = plt.subplots(figsize=(6, 4))
 
-    ax.plot(epsilon_values, f1_values, "o-", color=_COLORS["fedprox"],
-            linewidth=2, markersize=6, label="FedProx + DP-SGD")
+    ax.plot(
+        epsilon_values,
+        f1_values,
+        "o-",
+        color=_COLORS["fedprox"],
+        linewidth=2,
+        markersize=6,
+        label="FedProx + DP-SGD",
+    )
 
     if f1_ci_lower and f1_ci_upper:
-        ax.fill_between(epsilon_values, f1_ci_lower, f1_ci_upper,
-                        alpha=0.2, color=_COLORS["fedprox"], label="95% CI")
+        ax.fill_between(
+            epsilon_values,
+            f1_ci_lower,
+            f1_ci_upper,
+            alpha=0.2,
+            color=_COLORS["fedprox"],
+            label="95% CI",
+        )
 
     if baseline_f1 is not None:
-        ax.axhline(baseline_f1, linestyle="--", color=_COLORS["centralizado"],
-                   linewidth=1.5, label="Centralised (no DP)")
+        ax.axhline(
+            baseline_f1,
+            linestyle="--",
+            color=_COLORS["centralizado"],
+            linewidth=1.5,
+            label="Centralised (no DP)",
+        )
 
     ax.set_xlabel("Privacy Budget (ε)", fontsize=12)
     ax.set_ylabel(metric_name, fontsize=12)
@@ -102,15 +120,15 @@ def curva_epsilon_vs_f1(
 
 
 def curva_f1_vs_alpha(
-    alpha_values:    list[float],
-    f1_fedprox:      list[float],
-    f1_fedavg:       list[float] | None = None,
+    alpha_values: list[float],
+    f1_fedprox: list[float],
+    f1_fedavg: list[float] | None = None,
     f1_centralizado: float | None = None,
-    ci_fedprox:      list[tuple[float, float]] | None = None,
-    ci_fedavg:       list[tuple[float, float]] | None = None,
-    metric_name:     str = "F1@5",
-    output_path:     str = "figures/f1_vs_alpha.pdf",
-    title:           str = "Non-IID Heterogeneity vs Performance",
+    ci_fedprox: list[tuple[float, float]] | None = None,
+    ci_fedavg: list[tuple[float, float]] | None = None,
+    metric_name: str = "F1@5",
+    output_path: str = "figures/f1_vs_alpha.pdf",
+    title: str = "Non-IID Heterogeneity vs Performance",
 ) -> None:
     """
     Plots F1@k × α(Dirichlet) for FedProx, FedAvg, and centralised baseline.
@@ -131,8 +149,15 @@ def curva_f1_vs_alpha(
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     fig, ax = plt.subplots(figsize=(6, 4))
 
-    ax.plot(alpha_values, f1_fedprox, "s-", color=_COLORS["fedprox"],
-            linewidth=2, markersize=7, label="FedProx")
+    ax.plot(
+        alpha_values,
+        f1_fedprox,
+        "s-",
+        color=_COLORS["fedprox"],
+        linewidth=2,
+        markersize=7,
+        label="FedProx",
+    )
 
     if ci_fedprox:
         lower = [c[0] for c in ci_fedprox]
@@ -140,16 +165,30 @@ def curva_f1_vs_alpha(
         ax.fill_between(alpha_values, lower, upper, alpha=0.2, color=_COLORS["fedprox"])
 
     if f1_fedavg:
-        ax.plot(alpha_values, f1_fedavg, "^--", color=_COLORS["fedavg"],
-                linewidth=2, markersize=7, label="FedAvg")
+        ax.plot(
+            alpha_values,
+            f1_fedavg,
+            "^--",
+            color=_COLORS["fedavg"],
+            linewidth=2,
+            markersize=7,
+            label="FedAvg",
+        )
         if ci_fedavg:
             lower = [c[0] for c in ci_fedavg]
             upper = [c[1] for c in ci_fedavg]
-            ax.fill_between(alpha_values, lower, upper, alpha=0.2, color=_COLORS["fedavg"])
+            ax.fill_between(
+                alpha_values, lower, upper, alpha=0.2, color=_COLORS["fedavg"]
+            )
 
     if f1_centralizado is not None:
-        ax.axhline(f1_centralizado, linestyle="--", color=_COLORS["centralizado"],
-                   linewidth=1.5, label="Centralised")
+        ax.axhline(
+            f1_centralizado,
+            linestyle="--",
+            color=_COLORS["centralizado"],
+            linewidth=1.5,
+            label="Centralised",
+        )
 
     ax.set_xlabel("Dirichlet α (Non-IID heterogeneity ↑)", fontsize=12)
     ax.set_ylabel(metric_name, fontsize=12)
@@ -160,8 +199,14 @@ def curva_f1_vs_alpha(
 
     # Annotations for each α point
     for alpha, f1 in zip(alpha_values, f1_fedprox):
-        ax.annotate(f"α={alpha}", (alpha, f1), textcoords="offset points",
-                    xytext=(5, 5), fontsize=8, color=_COLORS["fedprox"])
+        ax.annotate(
+            f"α={alpha}",
+            (alpha, f1),
+            textcoords="offset points",
+            xytext=(5, 5),
+            fontsize=8,
+            color=_COLORS["fedprox"],
+        )
 
     plt.tight_layout()
     plt.savefig(output_path, dpi=300, bbox_inches="tight")
@@ -194,7 +239,7 @@ def convergence_curves(
     color_cycle = list(_COLORS.values())
     for idx, (config, values) in enumerate(metrics_by_config.items()):
         color = color_cycle[idx % len(color_cycle)]
-        ax.plot(rounds[:len(values)], values, linewidth=2, label=config, color=color)
+        ax.plot(rounds[: len(values)], values, linewidth=2, label=config, color=color)
 
     ax.set_xlabel("FL Round", fontsize=12)
     ax.set_ylabel(metric_name, fontsize=12)

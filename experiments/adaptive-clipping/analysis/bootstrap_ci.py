@@ -27,7 +27,9 @@ FINAL_ROUND = 20
 N_BOOTSTRAP = 10000
 
 
-def load_final_round_records(logs_root: Path, strategy: str, sigma: float) -> dict[int, list[dict]]:
+def load_final_round_records(
+    logs_root: Path, strategy: str, sigma: float
+) -> dict[int, list[dict]]:
     """Returns {seed: [round_020 record per silo]} for one (strategy, sigma) config."""
     records_by_seed: dict[int, list[dict]] = {}
     for run_dir in sorted(logs_root.glob(f"{strategy}_sigma{sigma}_seed*")):
@@ -59,10 +61,17 @@ def per_seed_value(records: list[dict], metric: str) -> float:
 
 
 def bootstrap_config(
-    logs_root: Path, strategy: str, sigma: float, metric: str, n_bootstrap: int = N_BOOTSTRAP,
+    logs_root: Path,
+    strategy: str,
+    sigma: float,
+    metric: str,
+    n_bootstrap: int = N_BOOTSTRAP,
 ) -> ConfidenceInterval:
+    """Bootstrap the 95% CI of ``metric`` for one (strategy, sigma) config across seeds."""
     records_by_seed = load_final_round_records(logs_root, strategy, sigma)
-    seed_values = [per_seed_value(records, metric) for records in records_by_seed.values()]
+    seed_values = [
+        per_seed_value(records, metric) for records in records_by_seed.values()
+    ]
     return confidence_interval(seed_values, n_bootstrap=n_bootstrap, seed=42)
 
 
@@ -72,10 +81,13 @@ def check_overlap(ci_a: ConfidenceInterval, ci_b: ConfidenceInterval) -> bool:
 
 
 def main() -> None:
+    """CLI entry point: compute bootstrap CIs for all configs and write the CSV."""
     exp_root = Path(__file__).resolve().parent.parent
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--logs-dir", type=Path, default=exp_root / "logs")
-    parser.add_argument("--output", type=Path, default=exp_root / "logs" / "bootstrap_ci.csv")
+    parser.add_argument(
+        "--output", type=Path, default=exp_root / "logs" / "bootstrap_ci.csv"
+    )
     args = parser.parse_args()
 
     rows = []
@@ -83,15 +95,17 @@ def main() -> None:
         for sigma in SIGMAS:
             for metric in ("micro_f1", "epsilon"):
                 ci = bootstrap_config(args.logs_dir, strategy, sigma, metric)
-                rows.append({
-                    "strategy": strategy,
-                    "sigma": sigma,
-                    "metric": metric,
-                    "mean": ci.mean,
-                    "ci_lower": ci.ci_lower,
-                    "ci_upper": ci.ci_upper,
-                    "n_seeds": ci.n,
-                })
+                rows.append(
+                    {
+                        "strategy": strategy,
+                        "sigma": sigma,
+                        "metric": metric,
+                        "mean": ci.mean,
+                        "ci_lower": ci.ci_lower,
+                        "ci_upper": ci.ci_upper,
+                        "n_seeds": ci.n,
+                    }
+                )
 
     df = pd.DataFrame(rows)
     args.output.parent.mkdir(parents=True, exist_ok=True)

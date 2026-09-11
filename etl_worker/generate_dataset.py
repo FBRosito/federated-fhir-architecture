@@ -21,7 +21,6 @@ from __future__ import annotations
 import argparse
 import csv
 import random
-from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
@@ -31,57 +30,200 @@ from typing import Any
 # ─────────────────────────────────────────────────────────────────────────────
 
 MALE_FIRST = [
-    "Adriano", "Alberto", "Alexandre", "Anderson", "André", "Bruno",
-    "Carlos", "Cláudio", "Daniel", "Diego", "Eduardo", "Fábio", "Felipe",
-    "Fernando", "Francisco", "Gabriel", "Guilherme", "Gustavo", "Hugo",
-    "João", "Jorge", "José", "Leonardo", "Lucas", "Luiz", "Marcelo",
-    "Márcio", "Marcos", "Mateus", "Miguel", "Paulo", "Pedro", "Rafael",
-    "Renato", "Ricardo", "Roberto", "Rodrigo", "Sérgio", "Thiago", "Victor",
+    "Adriano",
+    "Alberto",
+    "Alexandre",
+    "Anderson",
+    "André",
+    "Bruno",
+    "Carlos",
+    "Cláudio",
+    "Daniel",
+    "Diego",
+    "Eduardo",
+    "Fábio",
+    "Felipe",
+    "Fernando",
+    "Francisco",
+    "Gabriel",
+    "Guilherme",
+    "Gustavo",
+    "Hugo",
+    "João",
+    "Jorge",
+    "José",
+    "Leonardo",
+    "Lucas",
+    "Luiz",
+    "Marcelo",
+    "Márcio",
+    "Marcos",
+    "Mateus",
+    "Miguel",
+    "Paulo",
+    "Pedro",
+    "Rafael",
+    "Renato",
+    "Ricardo",
+    "Roberto",
+    "Rodrigo",
+    "Sérgio",
+    "Thiago",
+    "Victor",
 ]
 
 FEMALE_FIRST = [
-    "Adriana", "Amanda", "Ana", "Beatriz", "Camila", "Carla", "Carolina",
-    "Clara", "Cristina", "Daniela", "Débora", "Eliane", "Fabiana", "Fernanda",
-    "Gabriela", "Helena", "Isabela", "Juliana", "Karen", "Larissa", "Laura",
-    "Letícia", "Luciana", "Marcia", "Maria", "Mariana", "Mônica", "Natália",
-    "Patricia", "Paula", "Priscila", "Rafaela", "Renata", "Sandra", "Sara",
-    "Silvia", "Simone", "Sonia", "Tatiana", "Vanessa",
+    "Adriana",
+    "Amanda",
+    "Ana",
+    "Beatriz",
+    "Camila",
+    "Carla",
+    "Carolina",
+    "Clara",
+    "Cristina",
+    "Daniela",
+    "Débora",
+    "Eliane",
+    "Fabiana",
+    "Fernanda",
+    "Gabriela",
+    "Helena",
+    "Isabela",
+    "Juliana",
+    "Karen",
+    "Larissa",
+    "Laura",
+    "Letícia",
+    "Luciana",
+    "Marcia",
+    "Maria",
+    "Mariana",
+    "Mônica",
+    "Natália",
+    "Patricia",
+    "Paula",
+    "Priscila",
+    "Rafaela",
+    "Renata",
+    "Sandra",
+    "Sara",
+    "Silvia",
+    "Simone",
+    "Sonia",
+    "Tatiana",
+    "Vanessa",
 ]
 
 LAST_NAMES = [
-    "Almeida", "Alves", "Andrade", "Araújo", "Barbosa", "Barros", "Borges",
-    "Braga", "Campos", "Cardoso", "Carvalho", "Castro", "Cavalcanti", "Correia",
-    "Costa", "Cruz", "Cunha", "Dias", "Duarte", "Farias", "Ferreira", "Figueiredo",
-    "Fontes", "Freitas", "Gomes", "Gonçalves", "Guimarães", "Lima", "Lopes",
-    "Luz", "Macedo", "Machado", "Marques", "Martins", "Melo", "Mendes",
-    "Miranda", "Monteiro", "Moraes", "Moreira", "Nascimento", "Nunes", "Oliveira",
-    "Pereira", "Pinto", "Ramos", "Reis", "Ribeiro", "Rocha", "Rodrigues",
-    "Santos", "Silva", "Soares", "Sousa", "Souza", "Tavares", "Teixeira",
-    "Torres", "Vasconcelos", "Vieira",
+    "Almeida",
+    "Alves",
+    "Andrade",
+    "Araújo",
+    "Barbosa",
+    "Barros",
+    "Borges",
+    "Braga",
+    "Campos",
+    "Cardoso",
+    "Carvalho",
+    "Castro",
+    "Cavalcanti",
+    "Correia",
+    "Costa",
+    "Cruz",
+    "Cunha",
+    "Dias",
+    "Duarte",
+    "Farias",
+    "Ferreira",
+    "Figueiredo",
+    "Fontes",
+    "Freitas",
+    "Gomes",
+    "Gonçalves",
+    "Guimarães",
+    "Lima",
+    "Lopes",
+    "Luz",
+    "Macedo",
+    "Machado",
+    "Marques",
+    "Martins",
+    "Melo",
+    "Mendes",
+    "Miranda",
+    "Monteiro",
+    "Moraes",
+    "Moreira",
+    "Nascimento",
+    "Nunes",
+    "Oliveira",
+    "Pereira",
+    "Pinto",
+    "Ramos",
+    "Reis",
+    "Ribeiro",
+    "Rocha",
+    "Rodrigues",
+    "Santos",
+    "Silva",
+    "Soares",
+    "Sousa",
+    "Souza",
+    "Tavares",
+    "Teixeira",
+    "Torres",
+    "Vasconcelos",
+    "Vieira",
 ]
 
 PRACTITIONERS_CARDIOLOGY = [
-    "Dra. Ana Cardoso", "Dr. Roberto Lima", "Dra. Luciana Prado",
-    "Dr. Marcos Alves", "Dra. Patricia Mendes", "Dr. Eduardo Fonseca",
-    "Dra. Juliana Castro", "Dr. Renato Barbosa", "Dra. Carolina Neves",
+    "Dra. Ana Cardoso",
+    "Dr. Roberto Lima",
+    "Dra. Luciana Prado",
+    "Dr. Marcos Alves",
+    "Dra. Patricia Mendes",
+    "Dr. Eduardo Fonseca",
+    "Dra. Juliana Castro",
+    "Dr. Renato Barbosa",
+    "Dra. Carolina Neves",
     "Dr. Alexandre Duarte",
 ]
 PRACTITIONERS_PNEUMOLOGY = [
-    "Dr. Paulo Nogueira", "Dra. Camila Torres", "Dr. Henrique Barros",
-    "Dra. Vanessa Campos", "Dr. Leandro Farias", "Dra. Fernanda Cruz",
-    "Dr. Gustavo Mendes", "Dra. Tatiana Rocha", "Dr. Ricardo Monteiro",
+    "Dr. Paulo Nogueira",
+    "Dra. Camila Torres",
+    "Dr. Henrique Barros",
+    "Dra. Vanessa Campos",
+    "Dr. Leandro Farias",
+    "Dra. Fernanda Cruz",
+    "Dr. Gustavo Mendes",
+    "Dra. Tatiana Rocha",
+    "Dr. Ricardo Monteiro",
     "Dra. Simone Lopes",
 ]
 PRACTITIONERS_ENDOCRINOLOGY = [
-    "Dra. Renata Silveira", "Dr. Sergio Nascimento", "Dra. Isabela Rocha",
-    "Dr. Carlos Brandão", "Dra. Fernanda Dias", "Dr. Flávio Correia",
-    "Dra. Mariana Teixeira", "Dr. Paulo Gomes", "Dra. Cristina Alves",
+    "Dra. Renata Silveira",
+    "Dr. Sergio Nascimento",
+    "Dra. Isabela Rocha",
+    "Dr. Carlos Brandão",
+    "Dra. Fernanda Dias",
+    "Dr. Flávio Correia",
+    "Dra. Mariana Teixeira",
+    "Dr. Paulo Gomes",
+    "Dra. Cristina Alves",
     "Dr. André Cavalcanti",
 ]
 PRACTITIONERS_GENERAL = [
-    "Dr. Thiago Moreira", "Dra. Monica Leal", "Dr. Wagner Fonseca",
-    "Dra. Adriana Costa", "Dr. Bruno Carvalho", "Dra. Sandra Freitas",
-    "Dr. Leonardo Borges", "Dra. Daniela Pereira", "Dr. Felipe Santos",
+    "Dr. Thiago Moreira",
+    "Dra. Monica Leal",
+    "Dr. Wagner Fonseca",
+    "Dra. Adriana Costa",
+    "Dr. Bruno Carvalho",
+    "Dra. Sandra Freitas",
+    "Dr. Leonardo Borges",
+    "Dra. Daniela Pereira",
+    "Dr. Felipe Santos",
     "Dra. Priscila Oliveira",
 ]
 
@@ -226,7 +368,9 @@ CLINICAL_VARIANTS: dict[str, list[str]] = {
 # Helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def random_name(gender: str, rng: random.Random) -> str:
+    """Generate a random Brazilian-style full name (first + two distinct surnames)."""
     first = rng.choice(MALE_FIRST if gender == "male" else FEMALE_FIRST)
     last1 = rng.choice(LAST_NAMES)
     last2 = rng.choice(LAST_NAMES)
@@ -249,16 +393,20 @@ def vary_record_date(original: str, variant_index: int) -> str:
     base = date.fromisoformat(original[:10])
     offset = (variant_index + 1) * 7  # subsequent weeks
     new_date = base + timedelta(days=offset)
-    return f"{new_date.isoformat()}T{original[11:] if len(original) > 10 else '08:00:00Z'}"
+    return (
+        f"{new_date.isoformat()}T{original[11:] if len(original) > 10 else '08:00:00Z'}"
+    )
 
 
 def next_patient_id(counter: int) -> str:
+    """Format a zero-padded synthetic patient ID (``P001``, ``P002``, ...)."""
     return f"P{counter:03d}"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Core
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def generate_variants(
     original: dict[str, Any],
@@ -270,10 +418,14 @@ def generate_variants(
     diagnosis = original["raw_diagnosis"]
     partition_id = int(original["partition_id"])
 
-    # Alterna gênero nos pares de variantes para diversidade
-    gender = "male" if (variant_index % 2 == 0) == (original["gender"] == "female") else "female"
+    # Alternate gender across variant pairs for diversity
+    gender = (
+        "male"
+        if (variant_index % 2 == 0) == (original["gender"] == "female")
+        else "female"
+    )
 
-    # Faixa etária varia por variante (jovem, meia-idade, idoso jovem, idoso)
+    # Age band varies per variant (young, middle-aged, young-elderly, elderly)
     age_bands = [32, 45, 60, 74]
     age = age_bands[variant_index] + rng.randint(-4, 4)
 
@@ -286,31 +438,36 @@ def generate_variants(
             age=age,
         )
     else:
-        # Fallback genérico caso o diagnóstico não tenha template suficiente
+        # Generic fallback when the diagnosis has no template for this variant
         clinical_text = (
             f"Paciente do sexo {gender_noun}, {age} anos, com {diagnosis}. "
             "Avaliação clínica realizada, conduta terapêutica otimizada."
         )
 
     practitioners = PRACTITIONERS_BY_PARTITION.get(partition_id, PRACTITIONERS_GENERAL)
-    practitioner = rng.choice([p for p in practitioners if p != original["practitioner"]] or practitioners)
+    practitioner = rng.choice(
+        [p for p in practitioners if p != original["practitioner"]] or practitioners
+    )
 
     return {
-        "patient_id":      next_patient_id(patient_counter),
-        "patient_name":    random_name(gender, rng),
-        "gender":          gender,
-        "birth_date":      random_birth_date(age, original["record_date"], rng),
-        "record_date":     vary_record_date(original["record_date"], variant_index),
-        "raw_diagnosis":   diagnosis,
-        "clinical_text":   clinical_text,
-        "practitioner":    practitioner,
-        "partition_id":    original["partition_id"],
+        "patient_id": next_patient_id(patient_counter),
+        "patient_name": random_name(gender, rng),
+        "gender": gender,
+        "birth_date": random_birth_date(age, original["record_date"], rng),
+        "record_date": vary_record_date(original["record_date"], variant_index),
+        "raw_diagnosis": diagnosis,
+        "clinical_text": clinical_text,
+        "practitioner": practitioner,
+        "partition_id": original["partition_id"],
         "partition_label": original["partition_label"],
     }
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Gera dataset clínico sintético expandido.")
+    """CLI entry point: build the expanded synthetic clinical dataset."""
+    parser = argparse.ArgumentParser(
+        description="Generate the expanded synthetic clinical dataset."
+    )
     parser.add_argument(
         "--input",
         default="etl_worker/data/clinical_evolutions.csv",
@@ -337,7 +494,7 @@ def main() -> None:
 
     rng = random.Random(args.seed)
 
-    input_path  = Path(args.input)
+    input_path = Path(args.input)
     output_path = Path(args.output)
 
     if not input_path.exists():
@@ -346,8 +503,16 @@ def main() -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     fieldnames = [
-        "patient_id", "patient_name", "gender", "birth_date", "record_date",
-        "raw_diagnosis", "clinical_text", "practitioner", "partition_id", "partition_label",
+        "patient_id",
+        "patient_name",
+        "gender",
+        "birth_date",
+        "record_date",
+        "raw_diagnosis",
+        "clinical_text",
+        "practitioner",
+        "partition_id",
+        "partition_label",
     ]
 
     originals: list[dict[str, Any]] = []
@@ -371,18 +536,19 @@ def main() -> None:
         writer.writeheader()
         writer.writerows(all_rows)
 
-    total     = len(all_rows)
+    total = len(all_rows)
     synthetic = total - len(originals)
     print(
-        f"Dataset gerado: {total} exemplos "
-        f"({len(originals)} originais + {synthetic} sintéticos) → {output_path}"
+        f"Dataset generated: {total} examples "
+        f"({len(originals)} original + {synthetic} synthetic) → {output_path}"
     )
 
-    # Resumo por partição
+    # Per-partition summary
     from collections import Counter
+
     by_partition: Counter = Counter(r["partition_label"] for r in all_rows)
     for label, count in sorted(by_partition.items()):
-        print(f"  {label}: {count} exemplos")
+        print(f"  {label}: {count} examples")
 
 
 if __name__ == "__main__":

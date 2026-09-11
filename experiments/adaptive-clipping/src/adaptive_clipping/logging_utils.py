@@ -31,11 +31,14 @@ class RoundLogRecord:
 
 
 class GradientNormLogger:
-    def __init__(self, experiment_tag: str, silo_id: int, logs_root: Path = Path("logs")) -> None:
+    def __init__(
+        self, experiment_tag: str, silo_id: int, logs_root: Path = Path("logs")
+    ) -> None:
         self.path = Path(logs_root) / experiment_tag / str(silo_id)
         self.path.mkdir(parents=True, exist_ok=True)
 
     def log_round(self, record: RoundLogRecord) -> None:
+        """Persist one round's record as a single-line JSON file."""
         out_file = self.path / f"round_{record.round:03d}.jsonl"
         with open(out_file, "w") as f:
             f.write(json.dumps(asdict(record)))

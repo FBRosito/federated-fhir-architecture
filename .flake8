@@ -1,0 +1,24 @@
+[flake8]
+max-line-length = 120
+extend-ignore = E203, W503
+exclude =
+    .git,
+    .venv,
+    **/.venv,
+    __pycache__,
+    build,
+    dist,
+    graphify-out,
+    papers,
+    physionet.org,
+    experiment_results_vastai,
+    experiments/herald-pate,
+    experiments/client-level-dp,
+per-file-ignores =
+    # Long Portuguese clinical-note template strings (synthetic data, not code)
+    etl_worker/generate_dataset.py: E501
+    # PoC scripts intentionally silence warnings before importing heavy libs
+    experiments/article3-poc/diagnose_errors.py: E402
+    experiments/article3-poc/dual_lora_poc.py: E402
+    experiments/article3-poc/ffa_lora_poc.py: E402
+    experiments/article3-poc/ghost_clipping_poc.py: E402

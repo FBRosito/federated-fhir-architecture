@@ -28,18 +28,19 @@ log = logging.getLogger(__name__)
 @dataclass
 class ConfidenceInterval:
     """Confidence interval for a metric."""
-    mean:       float
-    std:        float
-    ci_lower:   float   # 2.5th percentile of the bootstrap
-    ci_upper:   float   # 97.5th percentile of the bootstrap
-    n:          int
+
+    mean: float
+    std: float
+    ci_lower: float  # 2.5th percentile of the bootstrap
+    ci_upper: float  # 97.5th percentile of the bootstrap
+    n: int
 
     @property
     def pm(self) -> float:
         """Margin of error ±1.96·std/√n (t-distribution for n<30, z for n≥30)."""
         if self.n == 0:
             return float("nan")
-        return 1.96 * self.std / max(self.n ** 0.5, 1)
+        return 1.96 * self.std / max(self.n**0.5, 1)
 
     def __str__(self) -> str:
         return (
@@ -64,24 +65,34 @@ def confidence_interval(
     Returns:
         ConfidenceInterval with mean, std, ci_lower, ci_upper.
     """
-    arr = np.array([v for v in values if v is not None and not np.isnan(v)], dtype=float)
+    arr = np.array(
+        [v for v in values if v is not None and not np.isnan(v)], dtype=float
+    )
     n = len(arr)
 
     if n == 0:
         return ConfidenceInterval(
-            mean=float("nan"), std=float("nan"),
-            ci_lower=float("nan"), ci_upper=float("nan"), n=0
+            mean=float("nan"),
+            std=float("nan"),
+            ci_lower=float("nan"),
+            ci_upper=float("nan"),
+            n=0,
         )
 
     mean = float(np.mean(arr))
-    std  = float(np.std(arr, ddof=1)) if n > 1 else 0.0
+    std = float(np.std(arr, ddof=1)) if n > 1 else 0.0
 
-    rng      = np.random.default_rng(seed)
-    boot_means = [float(np.mean(rng.choice(arr, size=n, replace=True))) for _ in range(n_bootstrap)]
+    rng = np.random.default_rng(seed)
+    boot_means = [
+        float(np.mean(rng.choice(arr, size=n, replace=True)))
+        for _ in range(n_bootstrap)
+    ]
     ci_lower = float(np.percentile(boot_means, 2.5))
     ci_upper = float(np.percentile(boot_means, 97.5))
 
-    return ConfidenceInterval(mean=mean, std=std, ci_lower=ci_lower, ci_upper=ci_upper, n=n)
+    return ConfidenceInterval(
+        mean=mean, std=std, ci_lower=ci_lower, ci_upper=ci_upper, n=n
+    )
 
 
 def wilcoxon_test(
@@ -105,23 +116,41 @@ def wilcoxon_test(
     """
     try:
         from scipy.stats import wilcoxon
+
         if len(baseline) < 2 or len(baseline) != len(treatment):
             log.warning("wilcoxon_test: requires n≥2 matched pairs.")
-            return {"statistic": float("nan"), "p_value": float("nan"), "n_pairs": 0, "significant_at_05": False}
+            return {
+                "statistic": float("nan"),
+                "p_value": float("nan"),
+                "n_pairs": 0,
+                "significant_at_05": False,
+            }
 
-        stat, p = wilcoxon(baseline, treatment, alternative=alternative, zero_method="wilcox")
+        stat, p = wilcoxon(
+            baseline, treatment, alternative=alternative, zero_method="wilcox"
+        )
         return {
-            "statistic":        round(float(stat), 6),
-            "p_value":          round(float(p), 6),
-            "n_pairs":          len(baseline),
+            "statistic": round(float(stat), 6),
+            "p_value": round(float(p), 6),
+            "n_pairs": len(baseline),
             "significant_at_05": bool(p < 0.05),
         }
     except ImportError:
         log.warning("scipy not installed — Wilcoxon test will return NaN.")
-        return {"statistic": float("nan"), "p_value": float("nan"), "n_pairs": len(baseline), "significant_at_05": False}
+        return {
+            "statistic": float("nan"),
+            "p_value": float("nan"),
+            "n_pairs": len(baseline),
+            "significant_at_05": False,
+        }
     except Exception as exc:
         log.warning("wilcoxon_test failed: %s", exc)
-        return {"statistic": float("nan"), "p_value": float("nan"), "n_pairs": len(baseline), "significant_at_05": False}
+        return {
+            "statistic": float("nan"),
+            "p_value": float("nan"),
+            "n_pairs": len(baseline),
+            "significant_at_05": False,
+        }
 
 
 def summarize_runs(
@@ -181,8 +210,10 @@ def compare_all_vs_baseline(
         results[config] = wilcoxon_test(baseline, values, alternative=alternative)
         log.info(
             "Wilcoxon %s vs %s: W=%.2f p=%.4f sig=%s",
-            config, baseline_key,
-            results[config]["statistic"], results[config]["p_value"],
+            config,
+            baseline_key,
+            results[config]["statistic"],
+            results[config]["p_value"],
             results[config]["significant_at_05"],
         )
     return results
@@ -216,11 +247,17 @@ def apply_bonferroni(
         p_adj = min(p_raw * m, 1.0) if not np.isnan(p_raw) else float("nan")
         result[config] = {
             **stats,
-            "p_value_bonferroni":           round(p_adj, 6),
-            "significant_at_05_bonferroni": bool(p_adj < 0.05) if not np.isnan(p_adj) else False,
+            "p_value_bonferroni": round(p_adj, 6),
+            "significant_at_05_bonferroni": (
+                bool(p_adj < 0.05) if not np.isnan(p_adj) else False
+            ),
         }
         log.info(
             "Bonferroni %s: p_raw=%.4f → p_adj=%.4f (m=%d) sig=%s",
-            config, p_raw, p_adj, m, result[config]["significant_at_05_bonferroni"],
+            config,
+            p_raw,
+            p_adj,
+            m,
+            result[config]["significant_at_05_bonferroni"],
         )
     return result

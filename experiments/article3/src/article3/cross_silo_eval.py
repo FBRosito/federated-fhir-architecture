@@ -35,7 +35,11 @@ from torch.utils.data import DataLoader
 
 from ai_client.fhir_consumer import fetch_training_examples
 from ai_client.fl_client import _stratified_split
-from ai_client.model_setup_bert import build_bert_dataset, load_bert_model, set_bert_parameters
+from ai_client.model_setup_bert import (
+    build_bert_dataset,
+    load_bert_model,
+    set_bert_parameters,
+)
 from evaluation.icd_metrics import evaluate_bert_model
 
 
@@ -44,18 +48,27 @@ def _load_silo_eval_examples(fhir_url: str, partition_id: int) -> list:
     for w in stats.warnings:
         print(f"  FHIR consumer warning: {w}")
     tag = f"partition_id={partition_id}"
-    examples = [ex for ex in examples if tag in ex.partition_note or not ex.partition_note]
+    examples = [
+        ex for ex in examples if tag in ex.partition_note or not ex.partition_note
+    ]
     _train_ex, eval_ex = _stratified_split(examples)
     return eval_ex
 
 
 def main() -> None:
+    """CLI entry point: cross-silo evaluation of a finished experiment run."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--tag", required=True, help="Experiment tag, e.g. a3_dual_lora_sigma1.0_seed0")
+    parser.add_argument(
+        "--tag", required=True, help="Experiment tag, e.g. a3_dual_lora_sigma1.0_seed0"
+    )
     parser.add_argument("--logs-dir", default="logs")
-    parser.add_argument("--fhir-url", default=os.getenv("FHIR_SERVER_URL", "http://localhost:8080/fhir"))
+    parser.add_argument(
+        "--fhir-url", default=os.getenv("FHIR_SERVER_URL", "http://localhost:8080/fhir")
+    )
     parser.add_argument("--num-silos", type=int, default=5)
-    parser.add_argument("--label-index-path", default=os.getenv("BERT_LABEL_INDEX_PATH", ""))
+    parser.add_argument(
+        "--label-index-path", default=os.getenv("BERT_LABEL_INDEX_PATH", "")
+    )
     parser.add_argument("--max-length", type=int, default=512)
     parser.add_argument("--batch-size", type=int, default=8)
     args = parser.parse_args()
@@ -66,7 +79,9 @@ def main() -> None:
 
     with open(args.label_index_path) as f:
         full_idx = json.load(f)
-    label_index = {k: v for k, v in full_idx.items() if v < 50}  # top50 benchmark, matches run_dual_lora.sh
+    label_index = {
+        k: v for k, v in full_idx.items() if v < 50
+    }  # top50 benchmark, matches run_dual_lora.sh
 
     print(f"Fetching eval examples for {args.num_silos} silos from {args.fhir_url}...")
     silo_eval_examples = {
@@ -93,16 +108,24 @@ def main() -> None:
 
             if local_ckpt.exists():
                 local_state = torch.load(local_ckpt, map_location="cpu")
-                set_peft_model_state_dict(model.encoder, local_state, adapter_name="local")
+                set_peft_model_state_dict(
+                    model.encoder, local_state, adapter_name="local"
+                )
             else:
-                print(f"  (no local_adapter.pt for silo {k} — evaluating global-only anyway)")
+                print(
+                    f"  (no local_adapter.pt for silo {k} — evaluating global-only anyway)"
+                )
 
             model.encoder.set_adapter("default")  # only the global component, per spec
             model = model.to(device)
 
             for j in range(k + 1, args.num_silos):
                 eval_ds = build_bert_dataset(
-                    silo_eval_examples[j], label_index, tokenizer, args.max_length, num_labels=50,
+                    silo_eval_examples[j],
+                    label_index,
+                    tokenizer,
+                    args.max_length,
+                    num_labels=50,
                 )
                 eval_dl = DataLoader(eval_ds, batch_size=args.batch_size, shuffle=False)
                 result = evaluate_bert_model(model, eval_dl, device)
@@ -116,7 +139,9 @@ def main() -> None:
                 }
                 out_f.write(json.dumps(record) + "\n")
                 out_f.flush()
-                print(f"  silo {k} -> silo {j}: micro_f1={result.micro_f1:.4f} (n={len(eval_ds)})")
+                print(
+                    f"  silo {k} -> silo {j}: micro_f1={result.micro_f1:.4f} (n={len(eval_ds)})"
+                )
 
             del model
             torch.cuda.empty_cache()

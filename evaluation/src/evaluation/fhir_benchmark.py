@@ -20,9 +20,9 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import statistics
 import time
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -31,36 +31,44 @@ import httpx
 log = logging.getLogger(__name__)
 
 _DEFAULT_FHIR_URL = os.getenv("FHIR_SERVER_URL", "http://localhost:8080/fhir")
-_REQUEST_TIMEOUT  = 60.0
+_REQUEST_TIMEOUT = 60.0
 
 
 @dataclass
 class FHIRBenchmarkResult:
     """FHIR benchmark results."""
-    post_latencies_ms:  list[float] = field(default_factory=list)
-    get_latencies_ms:   list[float] = field(default_factory=list)
+
+    post_latencies_ms: list[float] = field(default_factory=list)
+    get_latencies_ms: list[float] = field(default_factory=list)
     completeness_score: float = 0.0
-    n_bundles_posted:   int = 0
-    n_resources_found:  int = 0
+    n_bundles_posted: int = 0
+    n_resources_found: int = 0
     n_resources_expected: int = 0
-    errors:             list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
 
     def _percentiles(self, latencies: list[float]) -> dict[str, float]:
         if not latencies:
-            return {"p50": float("nan"), "p95": float("nan"), "p99": float("nan"), "mean": float("nan")}
+            return {
+                "p50": float("nan"),
+                "p95": float("nan"),
+                "p99": float("nan"),
+                "mean": float("nan"),
+            }
         s = sorted(latencies)
         n = len(s)
         return {
-            "p50":  s[int(n * 0.50)],
-            "p95":  s[int(n * 0.95)],
-            "p99":  s[min(int(n * 0.99), n - 1)],
+            "p50": s[int(n * 0.50)],
+            "p95": s[int(n * 0.95)],
+            "p99": s[min(int(n * 0.99), n - 1)],
             "mean": statistics.mean(latencies),
         }
 
     def post_stats(self) -> dict[str, float]:
+        """Latency percentiles (p50/p95/p99/mean) for POST operations."""
         return self._percentiles(self.post_latencies_ms)
 
     def get_stats(self) -> dict[str, float]:
+        """Latency percentiles (p50/p95/p99/mean) for GET operations."""
         return self._percentiles(self.get_latencies_ms)
 
     def __str__(self) -> str:
@@ -125,7 +133,11 @@ def benchmark_post_bundles(
             except Exception as exc:
                 result.errors.append(f"POST {bf.name}: {exc}")
 
-    log.info("POST benchmark: %d bundles | stats: %s", result.n_bundles_posted, result.post_stats())
+    log.info(
+        "POST benchmark: %d bundles | stats: %s",
+        result.n_bundles_posted,
+        result.post_stats(),
+    )
     return result
 
 
@@ -178,7 +190,11 @@ def benchmark_get_resources(
                     break
                 page += 1
 
-    log.info("GET benchmark: %d latencies | stats: %s", len(result.get_latencies_ms), result.get_stats())
+    log.info(
+        "GET benchmark: %d latencies | stats: %s",
+        len(result.get_latencies_ms),
+        result.get_stats(),
+    )
     return result
 
 
@@ -241,7 +257,9 @@ def benchmark_completeness(
             except Exception as exc:
                 result.errors.append(f"{bf.name}: {exc}")
 
-    result.completeness_score = result.n_resources_found / max(result.n_resources_expected, 1)
+    result.completeness_score = result.n_resources_found / max(
+        result.n_resources_expected, 1
+    )
     log.info(
         "Completeness: %.2f%% (%d/%d)",
         result.completeness_score * 100,
@@ -271,22 +289,22 @@ def run_full_benchmark(
     results["post"] = {
         **post_result.post_stats(),
         "n_bundles": post_result.n_bundles_posted,
-        "n_errors":  len(post_result.errors),
+        "n_errors": len(post_result.errors),
     }
 
     get_result = benchmark_get_resources(fhir_url)
     results["get"] = {
         **get_result.get_stats(),
         "n_resources": get_result.n_resources_found,
-        "n_errors":    len(get_result.errors),
+        "n_errors": len(get_result.errors),
     }
 
     comp_result = benchmark_completeness(fhir_url, bdir, n_samples=n_samples)
     results["completeness"] = {
-        "score":        comp_result.completeness_score,
-        "n_found":      comp_result.n_resources_found,
-        "n_expected":   comp_result.n_resources_expected,
-        "n_errors":     len(comp_result.errors),
+        "score": comp_result.completeness_score,
+        "n_found": comp_result.n_resources_found,
+        "n_expected": comp_result.n_resources_expected,
+        "n_errors": len(comp_result.errors),
     }
 
     log.info("\n%s", post_result)
@@ -294,11 +312,14 @@ def run_full_benchmark(
 
 
 def main() -> None:
+    """CLI entry point: run the FHIR R4 latency/completeness benchmark."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
     )
-    parser = argparse.ArgumentParser(description="FHIR R4 latency and completeness benchmark.")
+    parser = argparse.ArgumentParser(
+        description="FHIR R4 latency and completeness benchmark."
+    )
     parser.add_argument("--fhir-url", default=_DEFAULT_FHIR_URL)
     parser.add_argument("--bundles-dir", default="etl_worker/data/bundles")
     parser.add_argument("--n-samples", type=int, default=50)
@@ -311,6 +332,7 @@ def main() -> None:
     )
 
     import json
+
     print(json.dumps(results, indent=2))
 
 

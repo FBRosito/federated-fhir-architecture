@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "HERALD: Healthcare fEderated leaRning Architecture with LoRA and Differential-privacy"
+authors:
+  - family-names: "Rosito"
+    given-names: "Fernando Barcelos"
+    affiliation: "Federal University of Health Sciences of Porto Alegre (UFCSPA)"
+  - family-names: "Franco"
+    given-names: "Muriel Figueredo"
+    affiliation: "Federal University of Health Sciences of Porto Alegre (UFCSPA)"
+  - family-names: "Cazella"
+    given-names: "Silvio César"
+    affiliation: "Federal University of Health Sciences of Porto Alegre (UFCSPA)"
+license: MIT
+repository-code: "https://github.com/FBRosito/federated-fhir-architecture"
+type: software
+preferred-citation:
+  type: conference-paper
+  title: "HERALD: Healthcare fEderated leaRning Architecture with LoRA and Differential-privacy"
+  authors:
+    - family-names: "Rosito"
+      given-names: "Fernando Barcelos"
+      affiliation: "Federal University of Health Sciences of Porto Alegre (UFCSPA)"
+    - family-names: "Franco"
+      given-names: "Muriel Figueredo"
+      affiliation: "Federal University of Health Sciences of Porto Alegre (UFCSPA)"
+    - family-names: "Cazella"
+      given-names: "Silvio César"
+      affiliation: "Federal University of Health Sciences of Porto Alegre (UFCSPA)"
+  conference:
+    name: "IEEE International Conference on e-Health Networking, Application and Services (Healthcom)"
+  year: 2025
+  notes: "Under review"

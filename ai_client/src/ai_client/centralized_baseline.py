@@ -66,6 +66,7 @@ _LEAKAGE_RE = re.compile(
 
 # ── Stratified split ───────────────────────────────────────────────────────────
 
+
 def _stratified_split(
     examples: list[TrainingExample],
     train_ratio: float = 0.8,
@@ -80,24 +81,27 @@ def _stratified_split(
     train, val = [], []
     for _, group in by_code.items():
         shuffled = list(rng.permutation(group))  # type: ignore[arg-type]
-        n_train  = max(1, math.floor(len(shuffled) * train_ratio))
+        n_train = max(1, math.floor(len(shuffled) * train_ratio))
         train.extend(shuffled[:n_train])
         val.extend(shuffled[n_train:])
 
     if not val and train:
         rng.shuffle(train)
         n_move = max(1, math.ceil(len(train) * (1 - train_ratio)))
-        val    = train[:n_move]
-        train  = train[n_move:]
+        val = train[:n_move]
+        train = train[n_move:]
 
     log.info(
         "Train/eval split: %d/%d examples | %d unique ICD-10 codes",
-        len(train), len(val), len(by_code),
+        len(train),
+        len(val),
+        len(by_code),
     )
     return train, val
 
 
 # ── MIMIC-IV loading (primary diagnosis — for LLM) ────────────────────────────
+
 
 def load_mimic_direct(
     hosp_dir: Path,
@@ -130,7 +134,9 @@ def load_mimic_direct(
     df = diag.merge(icd_dict, on="icd_code", how="left")
 
     hadm_ids = set(df["hadm_id"].unique())
-    log.info("Loading discharge notes for %d admissions from %s...", len(hadm_ids), note_dir)
+    log.info(
+        "Loading discharge notes for %d admissions from %s...", len(hadm_ids), note_dir
+    )
     notes = pd.read_csv(note_dir / "discharge.csv.gz", usecols=["hadm_id", "text"])
     notes = notes[notes["hadm_id"].isin(hadm_ids)]
     notes = notes.groupby("hadm_id", as_index=False).first()
@@ -146,19 +152,22 @@ def load_mimic_direct(
         if _LEAKAGE_RE.search(snippet):
             skipped_leakage += 1
             continue
-        examples.append(TrainingExample(
-            patient_ref    = f"Patient/M{int(row['subject_id'])}",
-            clinical_text  = snippet,
-            icd10_code     = str(row["icd_code"]),
-            icd10_display  = str(row.get("long_title", "")),
-            condition_id   = "",
-            doc_ref_id     = "",
-            partition_note = "partition_id=-1",
-        ))
+        examples.append(
+            TrainingExample(
+                patient_ref=f"Patient/M{int(row['subject_id'])}",
+                clinical_text=snippet,
+                icd10_code=str(row["icd_code"]),
+                icd10_display=str(row.get("long_title", "")),
+                condition_id="",
+                doc_ref_id="",
+                partition_note="partition_id=-1",
+            )
+        )
 
     log.info(
         "Valid examples: %d | discarded for leakage: %d",
-        len(examples), skipped_leakage,
+        len(examples),
+        skipped_leakage,
     )
     rng = random.Random(seed)
     rng.shuffle(examples)
@@ -170,6 +179,7 @@ def load_mimic_direct(
 
 
 # ── MIMIC-IV loading (all codes per admission — for BERT) ─────────────────────
+
 
 def load_mimic_direct_multilabel(
     hosp_dir: Path,
@@ -195,9 +205,7 @@ def load_mimic_direct_multilabel(
 
     # All codes per admission (multi-label ground truth)
     all_codes_map: dict[int, list[str]] = (
-        diag_all.groupby("hadm_id")["icd_code"]
-        .apply(list)
-        .to_dict()
+        diag_all.groupby("hadm_id")["icd_code"].apply(list).to_dict()
     )
 
     # Primary diagnosis as the example anchor
@@ -215,7 +223,9 @@ def load_mimic_direct_multilabel(
     df = primary.merge(icd_dict, on="icd_code", how="left")
 
     hadm_ids = set(df["hadm_id"].unique())
-    log.info("Loading discharge notes for %d admissions from %s...", len(hadm_ids), note_dir)
+    log.info(
+        "Loading discharge notes for %d admissions from %s...", len(hadm_ids), note_dir
+    )
     notes = pd.read_csv(note_dir / "discharge.csv.gz", usecols=["hadm_id", "text"])
     notes = notes[notes["hadm_id"].isin(hadm_ids)]
     notes = notes.groupby("hadm_id", as_index=False).first()
@@ -231,22 +241,25 @@ def load_mimic_direct_multilabel(
         if _LEAKAGE_RE.search(snippet):
             skipped_leakage += 1
             continue
-        hadm_id   = int(row["hadm_id"])
+        hadm_id = int(row["hadm_id"])
         all_codes = all_codes_map.get(hadm_id, [str(row["icd_code"]).upper()])
-        examples.append(TrainingExample(
-            patient_ref     = f"Patient/M{int(row['subject_id'])}",
-            clinical_text   = snippet,
-            icd10_code      = str(row["icd_code"]).upper(),
-            icd10_display   = str(row.get("long_title", "")),
-            condition_id    = "",
-            doc_ref_id      = "",
-            partition_note  = "partition_id=-1",
-            all_icd10_codes = all_codes,
-        ))
+        examples.append(
+            TrainingExample(
+                patient_ref=f"Patient/M{int(row['subject_id'])}",
+                clinical_text=snippet,
+                icd10_code=str(row["icd_code"]).upper(),
+                icd10_display=str(row.get("long_title", "")),
+                condition_id="",
+                doc_ref_id="",
+                partition_note="partition_id=-1",
+                all_icd10_codes=all_codes,
+            )
+        )
 
     log.info(
         "Valid examples: %d | leakage discarded: %d",
-        len(examples), skipped_leakage,
+        len(examples),
+        skipped_leakage,
     )
     rng = random.Random(seed)
     rng.shuffle(examples)
@@ -258,6 +271,7 @@ def load_mimic_direct_multilabel(
 
 
 # ── Experiment B: LLM baseline (Llama + text generation) ──────────────────────
+
 
 def run_centralized(
     hosp_dir: Path,
@@ -274,19 +288,24 @@ def run_centralized(
     output_log: Path,
 ) -> None:
     """Centralised baseline for Experiment B: Llama text generation."""
-    from ai_client.model_setup import apply_lora, load_quantized_model, train_continuous
     from ai_client.fl_client import _evaluate_local
+    from ai_client.model_setup import apply_lora, load_quantized_model, train_continuous
 
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
 
     train_ex, eval_ex = load_mimic_direct(
-        hosp_dir, note_dir, max_examples=max_examples, max_chars=2048, seed=seed,
+        hosp_dir,
+        note_dir,
+        max_examples=max_examples,
+        max_chars=2048,
+        seed=seed,
     )
     log.info(
         "Centralised LLM: %d train | %d eval | %d unique ICD-10 codes",
-        len(train_ex), len(eval_ex),
+        len(train_ex),
+        len(eval_ex),
         len({e.icd10_code for e in train_ex}),
     )
 
@@ -295,26 +314,27 @@ def run_centralized(
 
     log.info(
         "Starting centralised LLM training: %d epochs × %d examples.",
-        num_epochs, len(train_ex),
+        num_epochs,
+        len(train_ex),
     )
     per_epoch = train_continuous(
-        model                = model,
-        tokenizer            = tokenizer,
-        examples             = train_ex,
-        num_epochs           = num_epochs,
-        learning_rate        = learning_rate,
-        batch_size           = batch_size,
-        gradient_accum_steps = gradient_accum_steps,
-        max_length           = max_seq_len,
+        model=model,
+        tokenizer=tokenizer,
+        examples=train_ex,
+        num_epochs=num_epochs,
+        learning_rate=learning_rate,
+        batch_size=batch_size,
+        gradient_accum_steps=gradient_accum_steps,
+        max_length=max_seq_len,
     )
 
     log.info("Final LLM evaluation on %d examples...", len(eval_ex))
     loss, n_eval, metrics = _evaluate_local(
-        model            = model,
-        tokenizer        = tokenizer,
-        examples         = eval_ex,
-        max_length       = max_seq_len,
-        compute_accuracy = eval_accuracy,
+        model=model,
+        tokenizer=tokenizer,
+        examples=eval_ex,
+        max_length=max_seq_len,
+        compute_accuracy=eval_accuracy,
     )
     log.info(
         "Final evaluation: loss=%.4f | ppl=%.2f%s",
@@ -324,16 +344,16 @@ def run_centralized(
     )
 
     results = {
-        "experiment":        "centralizado_llm",
-        "model_name":        model_name,
-        "seed":              seed,
-        "num_epochs":        num_epochs,
-        "max_examples":      max_examples,
-        "max_seq_len":       max_seq_len,
-        "n_train":           len(train_ex),
-        "n_eval":            n_eval,
+        "experiment": "centralizado_llm",
+        "model_name": model_name,
+        "seed": seed,
+        "num_epochs": num_epochs,
+        "max_examples": max_examples,
+        "max_seq_len": max_seq_len,
+        "n_train": len(train_ex),
+        "n_eval": n_eval,
         "per_epoch_metrics": per_epoch,
-        "final_eval":        {"eval_loss": loss, **metrics},
+        "final_eval": {"eval_loss": loss, **metrics},
     }
     output_log.parent.mkdir(parents=True, exist_ok=True)
     output_log.write_text(json.dumps(results, indent=2))
@@ -341,6 +361,7 @@ def run_centralized(
 
 
 # ── Experiment A: BERT baseline (PubMedBERT + ICD-10 multi-label) ─────────────
+
 
 def run_centralized_bert(
     hosp_dir: Path,
@@ -363,13 +384,14 @@ def run_centralized_bert(
     but trains on all data without partitioning or privacy constraints.
     """
     from torch.utils.data import DataLoader
+
+    from ai_client.fhir_consumer_bert import build_label_index, save_label_index
     from ai_client.model_setup_bert import (
         BertTrainingConfig,
         build_bert_dataset,
         load_bert_model,
         train_bert_one_round,
     )
-    from ai_client.fhir_consumer_bert import build_label_index, save_label_index
     from evaluation.icd_metrics import evaluate_bert_model
 
     torch.manual_seed(seed)
@@ -377,14 +399,20 @@ def run_centralized_bert(
     np.random.seed(seed)
 
     train_ex, eval_ex = load_mimic_direct_multilabel(
-        hosp_dir, note_dir, max_examples=max_examples, max_chars=2048, seed=seed,
+        hosp_dir,
+        note_dir,
+        max_examples=max_examples,
+        max_chars=2048,
+        seed=seed,
     )
     log.info("Centralised BERT: %d train | %d eval", len(train_ex), len(eval_ex))
 
     # Label index: prefer the pre-built file from mimic_builder
     # (ensures index consistency with the FL silos)
     label_index = build_label_index(
-        train_ex + eval_ex, benchmark=benchmark, label_index_path=label_index_path,
+        train_ex + eval_ex,
+        benchmark=benchmark,
+        label_index_path=label_index_path,
     )
     num_labels = len(label_index)
     log.info("Label index: %d labels (benchmark=%s).", num_labels, benchmark)
@@ -400,44 +428,54 @@ def run_centralized_bert(
 
     # Centralised training with multiple epochs (train_bert_one_round accepts num_epochs>1)
     train_cfg = BertTrainingConfig(
-        num_epochs           = num_epochs,
-        learning_rate        = learning_rate,
-        batch_size           = batch_size,
-        gradient_accum_steps = gradient_accum_steps,
+        num_epochs=num_epochs,
+        learning_rate=learning_rate,
+        batch_size=batch_size,
+        gradient_accum_steps=gradient_accum_steps,
     )
     log.info(
         "Starting centralised BERT training: %d epochs × %d examples.",
-        num_epochs, len(train_ex),
+        num_epochs,
+        len(train_ex),
     )
     _, n_train, train_metrics = train_bert_one_round(
-        model, tokenizer, train_ex, label_index, train_cfg, max_seq_len,
+        model,
+        tokenizer,
+        train_ex,
+        label_index,
+        train_cfg,
+        max_seq_len,
     )
 
     # Evaluation with Mullenbach 2018 metrics (ICD10Metrics)
     log.info("Final BERT evaluation on %d examples...", len(eval_ex))
     eval_dataset = build_bert_dataset(
-        eval_ex, label_index, tokenizer, max_seq_len, num_labels=num_labels,
+        eval_ex,
+        label_index,
+        tokenizer,
+        max_seq_len,
+        num_labels=num_labels,
     )
     eval_loader = DataLoader(
         eval_dataset,
-        batch_size = max(batch_size, 8),
-        shuffle    = False,
-        pin_memory = torch.cuda.is_available(),
+        batch_size=max(batch_size, 8),
+        shuffle=False,
+        pin_memory=torch.cuda.is_available(),
     )
     icd_metrics = evaluate_bert_model(model, eval_loader, device, k_list=[8, 15])
 
     results = {
-        "experiment":    "centralizado_bert",
-        "model_name":    "PubMedBERT",
-        "benchmark":     benchmark,
-        "seed":          seed,
-        "num_epochs":    num_epochs,
-        "max_examples":  max_examples,
-        "max_seq_len":   max_seq_len,
-        "n_train":       n_train,
-        "n_eval":        icd_metrics.n_samples,
+        "experiment": "centralizado_bert",
+        "model_name": "PubMedBERT",
+        "benchmark": benchmark,
+        "seed": seed,
+        "num_epochs": num_epochs,
+        "max_examples": max_examples,
+        "max_seq_len": max_seq_len,
+        "n_train": n_train,
+        "n_eval": icd_metrics.n_samples,
         "train_metrics": train_metrics,
-        "eval_metrics":  icd_metrics.to_flat_dict(),
+        "eval_metrics": icd_metrics.to_flat_dict(),
     }
     output_log.parent.mkdir(parents=True, exist_ok=True)
     output_log.write_text(json.dumps(results, indent=2))
@@ -447,11 +485,15 @@ def run_centralized_bert(
 
 # ── Entry point ────────────────────────────────────────────────────────────────
 
+
 def main() -> None:
-    backend  = os.getenv("MODEL_BACKEND", "llm").lower()
-    seed     = int(os.getenv("FL_SEED", "42"))
+    """Run the centralized (non-federated) baseline training."""
+    backend = os.getenv("MODEL_BACKEND", "llm").lower()
+    seed = int(os.getenv("FL_SEED", "42"))
     hosp_dir = Path(os.getenv("MIMIC_HOSP_DIR", "physionet.org/files/mimiciv/3.1/hosp"))
-    note_dir = Path(os.getenv("MIMIC_NOTE_DIR", "physionet.org/files/mimic-iv-note/2.2/note"))
+    note_dir = Path(
+        os.getenv("MIMIC_NOTE_DIR", "physionet.org/files/mimic-iv-note/2.2/note")
+    )
 
     # FL_MAX_EXAMPLES=0 means "no limit" (can be >100k — VERY slow).
     # run_experiments.sh passes CENTRAL_MAX_EXAMPLES (default 5000) for the centralised run.
@@ -459,33 +501,33 @@ def main() -> None:
 
     if backend == "bert":
         run_centralized_bert(
-            hosp_dir             = hosp_dir,
-            note_dir             = note_dir,
-            max_examples         = max_examples,
-            max_seq_len          = int(os.getenv("MAX_SEQ_LEN",             "512")),
-            num_epochs           = int(os.getenv("FL_NUM_ROUNDS",           "5")),
-            learning_rate        = float(os.getenv("FL_LEARNING_RATE",      "2e-4")),
-            batch_size           = int(os.getenv("FL_BATCH_SIZE",           "8")),
-            gradient_accum_steps = int(os.getenv("FL_GRADIENT_ACCUM_STEPS", "8")),
-            benchmark            = os.getenv("BERT_BENCHMARK",              "top50"),
-            label_index_path     = os.getenv("BERT_LABEL_INDEX_PATH",       ""),
-            seed                 = seed,
-            output_log           = Path(f"experiment_logs/centralizado_bert_seed{seed}.json"),
+            hosp_dir=hosp_dir,
+            note_dir=note_dir,
+            max_examples=max_examples,
+            max_seq_len=int(os.getenv("MAX_SEQ_LEN", "512")),
+            num_epochs=int(os.getenv("FL_NUM_ROUNDS", "5")),
+            learning_rate=float(os.getenv("FL_LEARNING_RATE", "2e-4")),
+            batch_size=int(os.getenv("FL_BATCH_SIZE", "8")),
+            gradient_accum_steps=int(os.getenv("FL_GRADIENT_ACCUM_STEPS", "8")),
+            benchmark=os.getenv("BERT_BENCHMARK", "top50"),
+            label_index_path=os.getenv("BERT_LABEL_INDEX_PATH", ""),
+            seed=seed,
+            output_log=Path(f"experiment_logs/centralizado_bert_seed{seed}.json"),
         )
     else:
         run_centralized(
-            hosp_dir             = hosp_dir,
-            note_dir             = note_dir,
-            model_name           = os.getenv("MODEL_NAME", "meta-llama/Llama-3.2-1B"),
-            max_examples         = max_examples,
-            max_seq_len          = int(os.getenv("MAX_SEQ_LEN",             "1024")),
-            num_epochs           = int(os.getenv("FL_NUM_ROUNDS",           "5")),
-            learning_rate        = float(os.getenv("FL_LEARNING_RATE",      "5e-5")),
-            batch_size           = int(os.getenv("FL_BATCH_SIZE",           "1")),
-            gradient_accum_steps = int(os.getenv("FL_GRADIENT_ACCUM_STEPS", "64")),
-            eval_accuracy        = os.getenv("FL_EVAL_ACCURACY", "false").lower() == "true",
-            seed                 = seed,
-            output_log           = Path(f"experiment_logs/centralizado_llm_seed{seed}.json"),
+            hosp_dir=hosp_dir,
+            note_dir=note_dir,
+            model_name=os.getenv("MODEL_NAME", "meta-llama/Llama-3.2-1B"),
+            max_examples=max_examples,
+            max_seq_len=int(os.getenv("MAX_SEQ_LEN", "1024")),
+            num_epochs=int(os.getenv("FL_NUM_ROUNDS", "5")),
+            learning_rate=float(os.getenv("FL_LEARNING_RATE", "5e-5")),
+            batch_size=int(os.getenv("FL_BATCH_SIZE", "1")),
+            gradient_accum_steps=int(os.getenv("FL_GRADIENT_ACCUM_STEPS", "64")),
+            eval_accuracy=os.getenv("FL_EVAL_ACCURACY", "false").lower() == "true",
+            seed=seed,
+            output_log=Path(f"experiment_logs/centralizado_llm_seed{seed}.json"),
         )
 
 

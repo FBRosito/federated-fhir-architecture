@@ -87,7 +87,9 @@ def check_fhir_dataset_size() -> None:
             f"make up-mimic MAX_ADMISSIONS={expected} N_SILOS=5 DIRICHLET_ALPHA=0.5 "
             f"BENCHMARK=top50 ICD_VERSION=icd10"
         )
-    print(f"[1a] OK — FHIR Patient count = {total} (matches MAX_ADMISSIONS={expected}).")
+    print(
+        f"[1a] OK — FHIR Patient count = {total} (matches MAX_ADMISSIONS={expected})."
+    )
 
 
 def check_learning_rate_exported() -> None:
@@ -103,7 +105,9 @@ def check_learning_rate_exported() -> None:
     try:
         lr = float(raw)
     except ValueError as exc:
-        raise PreflightError(f"[1b] FL_LEARNING_RATE={raw!r} is not a valid float.") from exc
+        raise PreflightError(
+            f"[1b] FL_LEARNING_RATE={raw!r} is not a valid float."
+        ) from exc
 
     backend = os.environ.get("MODEL_BACKEND", "bert").strip().lower()
     if backend == "bert" and lr < 1e-4:
@@ -189,6 +193,11 @@ CHECKS: list[tuple[str, "callable"]] = [
 
 
 def main() -> int:
+    """Run all preflight checks in order.
+
+    Returns:
+        0 when every check passes, 1 on the first failure.
+    """
     print("=== HERALD Fase 0 preflight check ===")
     for label, fn in CHECKS:
         try:
