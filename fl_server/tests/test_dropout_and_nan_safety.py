@@ -7,14 +7,12 @@ Covers invariant checklist items:
 """
 
 import numpy as np
-import pytest
 from flwr.common import FitRes, Status, ndarrays_to_parameters
 from flwr.common.typing import Code
 
 from fl_server.server import (
     NaNSafeFedAvg,
     NaNSafeFedProx,
-    PartialResultsDPStrategy,
     _has_nan,
     build_base_strategy,
     wrap_with_dp,

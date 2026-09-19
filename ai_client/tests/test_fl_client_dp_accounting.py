@@ -11,14 +11,10 @@ Covers critical invariants:
   5. Fixed seed -> reproducible train/eval split.
 """
 
-import math
-import os
-
 import pytest
 
 from ai_client.fhir_consumer import TrainingExample
 from ai_client.fl_client import (
-    ICD10_PATTERN,
     _compute_cumulative_epsilon,
     _extract_icd_codes,
     _stratified_split,
