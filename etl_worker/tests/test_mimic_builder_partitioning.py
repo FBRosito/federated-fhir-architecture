@@ -36,9 +36,9 @@ class TestDirichletPartitionSumToN:
         out = mimic_builder._dirichlet_partition(df, n_silos=4, alpha=0.3, seed=7)
         for chapter, group in df.groupby("icd_chapter"):
             assigned = out.loc[group.index, "partition_id"]
-            assert len(assigned) == len(group), (
-                f"chapter {chapter}: partitioning must not drop or duplicate rows"
-            )
+            assert len(assigned) == len(
+                group
+            ), f"chapter {chapter}: partitioning must not drop or duplicate rows"
 
     def test_should_conserve_total_row_count_overall(self, mimic_builder):
         df = _make_df(n=97)  # deliberately not divisible by n_silos

@@ -59,7 +59,10 @@ class TestGroupByLayer:
         assert "encoder.layer.0.lora_B" in groups
         # LoRA A/B must not collapse into the same group (each group holds a
         # distinct parameter object, not a shared reference).
-        assert groups["encoder.layer.0.lora_A"][0] is not groups["encoder.layer.0.lora_B"][0]
+        assert (
+            groups["encoder.layer.0.lora_A"][0]
+            is not groups["encoder.layer.0.lora_B"][0]
+        )
 
     def test_should_fallback_to_other_for_unmatched_names(self):
         params = [("classifier.head.weight", _param())]
@@ -90,9 +93,7 @@ class TestSnapshotGroupNorms:
         p1.grad = torch.tensor([3.0, 0.0])
         p2 = torch.nn.Parameter(torch.zeros(2))
         p2.grad = torch.tensor([4.0, 0.0])
-        norms = snapshot_group_norms(
-            [("other.p1", p1), ("other.p2", p2)], attr="grad"
-        )
+        norms = snapshot_group_norms([("other.p1", p1), ("other.p2", p2)], attr="grad")
         # L2 combination of two per-tensor norms [3.0, 4.0] -> 5.0
         assert norms["other"] == 5.0
 
