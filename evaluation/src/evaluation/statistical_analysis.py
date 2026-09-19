@@ -1,11 +1,11 @@
 """
 statistical_analysis.py
 -----------------------
-Statistical rigour for Qualis A1 publication.
+Statistical rigor for Qualis A1 publication.
 
 Functions:
   - confidence_interval(): mean ± 1.96·std/√n and bootstrap CI (n=1000 resamples)
-  - wilcoxon_test():        Wilcoxon signed-rank, centralised vs federated
+  - wilcoxon_test():        Wilcoxon signed-rank, centralized vs federated
   - summarize_runs():       Consolidates results from multiple seeds into mean ± CI
 
 Usage:
@@ -107,7 +107,7 @@ def wilcoxon_test(
     Standard in FL literature with few runs (He et al., 2020; McMahan et al., 2017).
 
     Args:
-        baseline:    Centralised baseline metrics (or FL without DP).
+        baseline:    Centralized baseline metrics (or FL without DP).
         treatment:   Federated model metrics (or FL with DP).
         alternative: "two-sided" | "greater" | "less".
 

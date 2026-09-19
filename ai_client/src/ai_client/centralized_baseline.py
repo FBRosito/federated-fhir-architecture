@@ -1,7 +1,7 @@
 """
 centralized_baseline.py
 -----------------------
-Centralised baseline for scientific comparison with the FL system.
+Centralized baseline for scientific comparison with the FL system.
 
 Routed by MODEL_BACKEND:
   'bert' → PubMedBERT + per-label attention + BCEWithLogitsLoss (Experiment A)
@@ -9,11 +9,11 @@ Routed by MODEL_BACKEND:
 
 Both backends read MIMIC-IV data directly from CSVs (bypassing FHIR R4),
 apply the same filters as mimic_builder.py, and train with a continuous
-optimiser across epochs — no federated communication overhead.
+optimizer across epochs — no federated communication overhead.
 
 Methodological differences from FL:
   - Data source: direct CSV (not FHIR)
-  - Optimiser: state preserved across epochs
+  - Optimizer: state preserved across epochs
   - Communication: zero overhead (no gRPC rounds)
   - Partitioning: none (trains on all data at once)
 
@@ -287,7 +287,7 @@ def run_centralized(
     seed: int,
     output_log: Path,
 ) -> None:
-    """Centralised baseline for Experiment B: Llama text generation."""
+    """Centralized baseline for Experiment B: Llama text generation."""
     from ai_client.fl_client import _evaluate_local
     from ai_client.model_setup import apply_lora, load_quantized_model, train_continuous
 
@@ -378,7 +378,7 @@ def run_centralized_bert(
     output_log: Path,
 ) -> None:
     """
-    Centralised baseline for Experiment A: PubMedBERT + ICD-10 multi-label.
+    Centralized baseline for Experiment A: PubMedBERT + ICD-10 multi-label.
 
     Uses the same PLM-ICD architecture (Huang et al., 2022) as the FL silos,
     but trains on all data without partitioning or privacy constraints.
@@ -426,7 +426,7 @@ def run_centralized_bert(
     model.to(device)
     log.info("BERT model on %s | num_labels=%d", device, num_labels)
 
-    # Centralised training with multiple epochs (train_bert_one_round accepts num_epochs>1)
+    # Centralized training with multiple epochs (train_bert_one_round accepts num_epochs>1)
     train_cfg = BertTrainingConfig(
         num_epochs=num_epochs,
         learning_rate=learning_rate,
@@ -496,7 +496,7 @@ def main() -> None:
     )
 
     # FL_MAX_EXAMPLES=0 means "no limit" (can be >100k — VERY slow).
-    # run_experiments.sh passes CENTRAL_MAX_EXAMPLES (default 5000) for the centralised run.
+    # run_experiments.sh passes CENTRAL_MAX_EXAMPLES (default 5000) for the centralized run.
     max_examples = int(os.getenv("FL_MAX_EXAMPLES", "5000"))
 
     if backend == "bert":

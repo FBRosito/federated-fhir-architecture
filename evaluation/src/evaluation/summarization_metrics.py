@@ -32,7 +32,7 @@ PUBMEDBERT_MODEL = "microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract-fulltex
 
 @dataclass
 class SummarizationMetrics:
-    """Container for clinical summarisation metrics."""
+    """Container for clinical summarization metrics."""
 
     rouge_1: float
     rouge_2: float
@@ -112,7 +112,7 @@ def _compute_bertscore(
     Computes BERTScore using PubMedBERT as the reference model.
 
     PubMedBERT (trained on biomedical text) is preferred over generic BERT
-    for clinical text evaluation — higher correlation with human judgements
+    for clinical text evaluation — higher correlation with human judgments
     in the medical domain (Zhang et al., 2020).
     """
     try:

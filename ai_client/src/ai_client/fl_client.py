@@ -619,7 +619,7 @@ class FHIRFederatedClient(NumPyClient):
             from ai_client.model_setup_bert import load_bert_model
 
             # num_labels derived from the shared global label_index.json, filtered
-            # by BERT_BENCHMARK so FL and centralised evaluate on identical label spaces.
+            # by BERT_BENCHMARK so FL and centralized evaluate on identical label spaces.
             # top50: indices 0-49 in the global file (globally most frequent codes).
             # full:  all codes in the global file.
             _lp = os.getenv("BERT_LABEL_INDEX_PATH", "")
@@ -775,7 +775,7 @@ class FHIRFederatedClient(NumPyClient):
         # BERT backend: load the global label_index.json and filter by BERT_BENCHMARK.
         # top50 → keep only the 50 globally most frequent codes (index < 50).
         # full  → keep all codes.
-        # This ensures FL silos and centralised_baseline use the same code→column mapping.
+        # This ensures FL silos and centralized_baseline use the same code→column mapping.
         if self._backend == "bert" and self._label_index is None:
             _lp = os.getenv("BERT_LABEL_INDEX_PATH", "")
             if _lp and os.path.exists(_lp):
