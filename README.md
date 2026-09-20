@@ -583,6 +583,7 @@ please follow the responsible-disclosure process in [SECURITY.md](SECURITY.md).
 
 ## Citation
 
+{% raw %}
 ```bibtex
 @inproceedings{rosito2025herald,
   title     = {{HERALD}: Healthcare fEderated leaRning Architecture with {LoRA}
@@ -595,6 +596,7 @@ please follow the responsible-disclosure process in [SECURITY.md](SECURITY.md).
   note      = {Under review},
 }
 ```
+{% endraw %}
 
 ---
 
