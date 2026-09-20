@@ -11,8 +11,8 @@ deltas and aggregates them with FedProx weighted averaging.
 
 Why FedProx for Non-IID?
     Our data is deliberately heterogeneous (partitions by medical specialty).
-    FedProx introduces a proximal term μ||w - w_global||² that penalises
-    clients that deviate too far from the global model, stabilising convergence.
+    FedProx introduces a proximal term μ||w - w_global||² that penalizes
+    clients that deviate too far from the global model, stabilizing convergence.
     The proximal term applies only to LoRA parameters {B_l, A_l}: since base
     weights W_0 are frozen (requires_grad=False), ||θ_total - θ_t||² reduces
     to ||θ_LoRA - θ_LoRA_t||² by construction.

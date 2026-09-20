@@ -4,13 +4,13 @@ gradient_inversion.py
 Security evaluation: gradient inversion attack on LoRA gradients.
 
 Implements an adapted version of the DLG attack (Deep Leakage from Gradients,
-Zhu et al. 2019) for LoRA adapter gradients in quantised models.
+Zhu et al. 2019) for LoRA adapter gradients in quantized models.
 
 Objective: quantify the real protection of DP-SGD against reconstruction
 of patient data from gradients exchanged in the federation.
 
 Methodology:
-  1. Without DP: extract LoRA gradients from a sample and optimise a dummy
+  1. Without DP: extract LoRA gradients from a sample and optimize a dummy
      input so that its gradients approximate the real ones (DLG).
   2. With DP: repeat with noisy gradients (σ > 0) and measure the degradation
      in reconstruction quality.
@@ -94,13 +94,13 @@ def run_dlg_attack(
 
     Args:
         model:           PeftModel with LoRA adapters (eval mode for gradient extraction).
-        tokenizer:       Corresponding tokeniser.
+        tokenizer:       Corresponding tokenizer.
         example_text:    Original clinical text (attack label).
-        n_iterations:    Number of dummy optimisation iterations.
-        lr:              Attacker optimiser learning rate.
+        n_iterations:    Number of dummy optimization iterations.
+        lr:              Attacker optimizer learning rate.
         dp_noise_sigma:  σ of DP noise applied to real gradients (0.0 = no DP).
         max_grad_norm:   DP clipping norm (only relevant if sigma > 0).
-        max_length:      Maximum tokenisation length.
+        max_length:      Maximum tokenization length.
         device:          Inference device.
 
     Returns:
@@ -147,8 +147,8 @@ def run_dlg_attack(
 
     model.zero_grad()
 
-    # ── 2. Optimise dummy input ──────────────────────────────────────────────
-    # For transformers: we optimise the initial (continuous) embeddings as a proxy.
+    # ── 2. Optimize dummy input ──────────────────────────────────────────────
+    # For transformers: we optimize the initial (continuous) embeddings as a proxy.
     # This avoids the non-differentiability of argmax in token space.
     # Reference: TAG attack (Deng et al., 2021).
 
@@ -175,7 +175,7 @@ def run_dlg_attack(
             if p.requires_grad and p.grad is not None
         ]
 
-        # Minimise distance between dummy and real gradients
+        # Minimize distance between dummy and real gradients
         grad_loss = sum(
             (g_d - g_r).pow(2).mean() for g_r, g_d in zip(grad_real, grad_dummy)
         )
@@ -197,9 +197,9 @@ def run_dlg_attack(
                 log.info("DLG converged at iteration %d.", iteration)
                 break
 
-    # ── 3. Decode optimised embeddings → text ──────────────────────────────
+    # ── 3. Decode optimized embeddings → text ──────────────────────────────
     with torch.no_grad():
-        # Find the nearest token for each optimised embedding
+        # Find the nearest token for each optimized embedding
         all_embeds = embedding_layer.weight.detach()  # [vocab_size, d_model]
         cosine_sim = (
             torch.nn.functional.normalize(dummy_embeds[0], dim=-1)

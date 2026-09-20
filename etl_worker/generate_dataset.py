@@ -4,7 +4,7 @@ generate_dataset.py — Synthetic clinical dataset generator (smoke-test only).
 
 For each of the 20 original records in clinical_evolutions.csv, generates
 4 synthetic variants totalling 100 examples (20 original + 80 new).
-Variants randomise patient demographics, symptoms, vital signs, and clinician
+Variants randomize patient demographics, symptoms, vital signs, and clinician
 while preserving the same diagnosis (raw_diagnosis) and partition (partition_id)
 to maintain the Non-IID specialty distribution across silos.
 
@@ -471,24 +471,24 @@ def main() -> None:
     parser.add_argument(
         "--input",
         default="etl_worker/data/clinical_evolutions.csv",
-        help="CSV de entrada com os 20 exemplos originais.",
+        help="Input CSV with the 20 original examples.",
     )
     parser.add_argument(
         "--output",
         default="etl_worker/data/clinical_evolutions_100.csv",
-        help="CSV de saída com 100 exemplos (20 originais + 80 sintéticos).",
+        help="Output CSV with 100 examples (20 original + 80 synthetic).",
     )
     parser.add_argument(
         "--seed",
         type=int,
         default=42,
-        help="Semente para reproducibilidade (padrão: 42).",
+        help="Seed for reproducibility (default: 42).",
     )
     parser.add_argument(
         "--variants-per-original",
         type=int,
         default=4,
-        help="Número de variantes a gerar por exemplo original (padrão: 4).",
+        help="Number of variants to generate per original example (default: 4).",
     )
     args = parser.parse_args()
 

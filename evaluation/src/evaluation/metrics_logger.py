@@ -11,7 +11,7 @@ Responsibilities:
     2. Operational logger to CSV:
        - Federated communication rounds and data volume transmitted
        - Local processing time (GPU via torch.cuda.Event or CPU via perf_counter)
-       - Peak GPU memory, CPU utilisation, and RAM
+       - Peak GPU memory, CPU utilization, and RAM
        - Training/evaluation metrics received from fl_client
 
     3. Post-training analysis utilities:
@@ -91,7 +91,7 @@ class MetricsReport:
     recall_micro: float = 0.0
     f1_micro: float = 0.0
 
-    # ── Macro (simple mean per class — penalises imbalance)
+    # ── Macro (simple mean per class — penalizes imbalance)
     precision_macro: float = 0.0
     recall_macro: float = 0.0
     f1_macro: float = 0.0
@@ -155,7 +155,7 @@ class OperationalRecord:
     gpu_processing_time_s: float = 0.0  # round time (GPU Event or perf_counter)
     gpu_memory_peak_mb: float = 0.0  # peak VRAM allocated this round (MB)
     gpu_memory_current_mb: float = 0.0  # VRAM allocated at end of round (MB)
-    gpu_utilization_pct: float = 0.0  # GPU utilisation % (nvidia-smi, best-effort)
+    gpu_utilization_pct: float = 0.0  # GPU utilization % (nvidia-smi, best-effort)
     cpu_usage_pct: float = 0.0  # CPU % at log time
     ram_usage_gb: float = 0.0  # process RAM usage (GB)
 
@@ -177,7 +177,7 @@ class GPUTimer:
     """
     Precision timer for GPU/CPU operations.
 
-    On GPU: uses `torch.cuda.Event` with explicit synchronisation — measures the
+    On GPU: uses `torch.cuda.Event` with explicit synchronization — measures the
     actual execution time on the device, including asynchronous kernel launches.
     Avoids the bias of `time.perf_counter` which returns before CUDA kernels finish.
 
@@ -493,7 +493,7 @@ def print_classification_report(
 
 def _get_gpu_utilization() -> float:
     """
-    Queries GPU utilisation (%) via nvidia-smi.
+    Queries GPU utilization (%) via nvidia-smi.
     Returns 0.0 if nvidia-smi is unavailable or fails.
     Best-effort — does not interrupt the main flow on error.
     """
@@ -800,7 +800,7 @@ class FederatedRunLogger:
 
     def convergence_table(self) -> pd.DataFrame:
         """
-        Returns a DataFrame summarising metric evolution by round —
+        Returns a DataFrame summarizing metric evolution by round —
         useful for plotting convergence curves.
 
         Returns:

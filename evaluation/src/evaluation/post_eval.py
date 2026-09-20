@@ -3,7 +3,7 @@ post_eval.py — Post-training LLM-as-judge evaluation for Experiment B.
 
 Loads a trained LoRA checkpoint produced by FL_SAVE_CHECKPOINT, generates
 discharge summaries for up to N FHIR examples, runs the 3-judge ensemble
-(Qwen2.5-72B + Gemma-3-27B + DeepSeek-R1), and appends results to the run JSON.
+(Qwen2.5-72B + Gemma-3-27B + DeepSeek-V3.1), and appends results to the run JSON.
 
 Usage:
     python -m evaluation.post_eval \\

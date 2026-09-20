@@ -333,7 +333,7 @@ def load_base_data(
         hosp_dir:            MIMIC-IV hosp/ directory.
         max_admissions:      Total number of admissions to select.
         seed:                Seed for reproducibility.
-        n_silos:             Number of federated silos (default 2 = legacy behaviour).
+        n_silos:             Number of federated silos (default 2 = legacy behavior).
         dirichlet_alpha:     α for Dirichlet partitioning (0.0 = legacy by specialty).
         icd_version:         "icd10" filters admissions with ICD-10-CM (admittime >= 2015-10-01);
                              "all" includes all versions.

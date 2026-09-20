@@ -2,7 +2,7 @@
 etl_pipeline.py
 ---------------
 Reads Non-IID partitioned clinical evolutions from CSV and converts them to
-FHIR R5 resources (Patient, Condition, Composition, DocumentReference), sending
+FHIR R4 resources (Patient, Condition, Composition, DocumentReference), sending
 a Transaction Bundle via POST to the FHIR R4 server for validation.
 
 Non-IID partitioning:
@@ -470,7 +470,7 @@ def _post_payload(
     """
     Sends Transaction Bundle bytes via POST with automatic retries.
 
-    Transient errors (server still initialising, 5xx) are retried every
+    Transient errors (server still initializing, 5xx) are retried every
     `retry_interval` seconds for up to `timeout_total` seconds before giving up.
     Permanent client errors (4xx with FHIR/JSON Content-Type) are not retried.
     """
@@ -495,7 +495,7 @@ def _post_payload(
             if 400 <= response.status_code < 500 and is_fhir_json:
                 response.raise_for_status()
 
-            # 4xx with HTML = Tomcat still initialising (JPA boot incomplete);
+            # 4xx with HTML = Tomcat still initializing (JPA boot incomplete);
             # 5xx = server overloaded/restarting — both are transient
             raise httpx.HTTPStatusError(
                 f"Server returned {response.status_code} (Content-Type: {content_type!r})",
@@ -539,7 +539,7 @@ def post_bundle(
     retry_interval: float = 5.0,
     timeout_total: float = 120.0,
 ) -> dict[str, Any]:
-    """Serialises and sends a Transaction Bundle via POST with retries."""
+    """Serializes and sends a Transaction Bundle via POST with retries."""
     payload = bundle.model_dump_json(exclude_none=True).encode("utf-8")
     return _post_payload(
         payload, fhir_url, retry_interval=retry_interval, timeout_total=timeout_total
@@ -613,7 +613,7 @@ def process_row(row: pd.Series, fhir_url: str, dry_run: bool = False) -> bool:
     Args:
         row:      pandas DataFrame row.
         fhir_url: FHIR R4 base URL (e.g. http://localhost:8080/fhir).
-        dry_run:  If True, serialises the Bundle but does not send it.
+        dry_run:  If True, serializes the Bundle but does not send it.
 
     Returns:
         True on success, False on error.
@@ -749,7 +749,7 @@ def main() -> None:
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Validate and serialise Bundles without sending to the server (CSV mode only).",
+        help="Validate and serialize Bundles without sending to the server (CSV mode only).",
     )
     args = parser.parse_args()
 

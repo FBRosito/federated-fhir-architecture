@@ -25,7 +25,7 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-# Colour palette consistent with IEEE/JAMIA publications
+# Color palette consistent with IEEE/JAMIA publications
 _COLORS = {
     "centralizado": "#2ca02c",  # green
     "fedprox": "#1f77b4",  # blue
@@ -61,14 +61,14 @@ def curva_epsilon_vs_f1(
     """
     Plots ε × F1@k curve with confidence interval (shaded area).
 
-    Includes a horizontal line for the centralised baseline (no DP) if provided.
+    Includes a horizontal line for the centralized baseline (no DP) if provided.
 
     Args:
         epsilon_values: ε values computed by the RDPAccountant.
         f1_values:      F1@k corresponding to each ε (mean across seeds).
         f1_ci_lower:    Lower bound of the 95% CI (bootstrap).
         f1_ci_upper:    Upper bound of the 95% CI (bootstrap).
-        baseline_f1:    F1@k of the centralised baseline (dashed line).
+        baseline_f1:    F1@k of the centralized baseline (dashed line).
         metric_name:    Metric name on the Y axis.
         output_path:    Output file path (.pdf or .png).
         title:          Plot title.
@@ -131,13 +131,13 @@ def curva_f1_vs_alpha(
     title: str = "Non-IID Heterogeneity vs Performance",
 ) -> None:
     """
-    Plots F1@k × α(Dirichlet) for FedProx, FedAvg, and centralised baseline.
+    Plots F1@k × α(Dirichlet) for FedProx, FedAvg, and centralized baseline.
 
     Args:
         alpha_values:    α values (e.g. [0.1, 0.5, 1.0]).
         f1_fedprox:      Mean FedProx F1@k for each α.
         f1_fedavg:       Mean FedAvg F1@k for each α (optional).
-        f1_centralizado: Centralised baseline F1@k (horizontal line).
+        f1_centralizado: Centralized baseline F1@k (horizontal line).
         ci_fedprox:      List of (ci_lower, ci_upper) for FedProx.
         ci_fedavg:       List of (ci_lower, ci_upper) for FedAvg.
         metric_name:     Metric name on the Y axis.
