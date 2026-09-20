@@ -16,7 +16,7 @@ self-preference bias relative to the training model (Llama-3.2-3B):
 Evaluation dimensions (scale 1-5 Likert for each):
   1. Clinical accuracy    — correct diagnoses and procedures
   2. Completeness         — covers the main points of the admission
-  3. Coherence            — fluent and well-organised text
+  3. Coherence            — fluent and well-organized text
   4. Hallucination-free   — absence of fabricated information
   5. Clinical utility     — useful for the next clinician seeing the patient
 
@@ -321,7 +321,7 @@ def _krippendorff_alpha_ordinal(ratings: list[list[float]]) -> float:
     if n_all < 2:
         return float("nan")
 
-    # Vectorised: d_e = mean of (c - k)^2 over all ordered pairs (c != k position-wise)
+    # Vectorized: d_e = mean of (c - k)^2 over all ordered pairs (c != k position-wise)
     d_e_sum = 0.0
     de_count = 0
     for i in range(n_all):

@@ -122,7 +122,7 @@ def find_optimal_threshold(
     y_score: np.ndarray,
     thresholds: list[float] | None = None,
 ) -> float:
-    """Grid-search the threshold that maximises micro-F1 on (y_true, y_score)."""
+    """Grid-search the threshold that maximizes micro-F1 on (y_true, y_score)."""
     candidates = thresholds if thresholds is not None else _THRESHOLD_GRID
     best_t, best_f1 = 0.5, -1.0
     for t in candidates:
@@ -151,7 +151,7 @@ def compute_icd_metrics(
         y_score:   [n_samples, n_labels] — sigmoid probabilities from the model.
         k_list:    List of k values for @k metrics (default: [8, 15]).
         threshold: Threshold for binary F1. If None (default), the threshold is
-                   selected via grid search to maximise micro-F1 on this set.
+                   selected via grid search to maximize micro-F1 on this set.
 
     Returns:
         ICD10Metrics with all metrics computed.
@@ -161,7 +161,7 @@ def compute_icd_metrics(
 
     n_samples, n_labels = y_true.shape
 
-    # Adaptive threshold: find the value that maximises micro-F1 on this set.
+    # Adaptive threshold: find the value that maximizes micro-F1 on this set.
     # With many labels (e.g. 7756), sigmoid outputs are typically well below 0.5
     # even for correct predictions, so a fixed 0.5 threshold produces F1=0.
     if threshold is None:

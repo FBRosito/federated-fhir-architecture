@@ -2,7 +2,7 @@
 model_setup.py
 --------------
 Configures an open-source LLM (Llama-3.2 by default) with optional NF4 4-bit
-quantisation via BitsAndBytesConfig, applies LoRA adapters (PEFT) on top of
+quantization via BitsAndBytesConfig, applies LoRA adapters (PEFT) on top of
 frozen base weights for the ICD-10 code extraction task, and exposes a
 standard PyTorch training function compatible with the Flower federated loop.
 
@@ -10,7 +10,7 @@ Flow:
     1. load_quantized_model()   → base model in NF4 / fp16 / bf16 (controlled by
                                   MODEL_BASE_PRECISION, default nf4)
     2. apply_lora()             → injects trainable LoRA adapters
-    3. build_dataset()          → tokenises examples from fhir_consumer
+    3. build_dataset()          → tokenizes examples from fhir_consumer
     4. train_one_round()        → PyTorch loop + returns LoRA weights for Flower
 
 Hardware requirements:
@@ -20,7 +20,7 @@ Hardware requirements:
 Environment variables:
     MODEL_NAME           HuggingFace model ID (default: TinyLlama/TinyLlama-1.1B-Chat-v1.0)
     HF_TOKEN             HuggingFace access token (required for gated models)
-    MAX_SEQ_LEN          Maximum sequence length for tokenisation (default: 512)
+    MAX_SEQ_LEN          Maximum sequence length for tokenization (default: 512)
     MODEL_BASE_PRECISION Base model precision: nf4 (default, ~500 MB) | fp16 | bf16 (~2.4 GB)
 """
 
@@ -75,8 +75,8 @@ DEFAULT_MAX_SEQ_LEN = int(os.getenv("MAX_SEQ_LEN", "512"))
 # TurboQuant is orthogonal — it compresses LoRA deltas during FL transmission,
 # not model weights, and has no effect on VRAM regardless of precision chosen here.
 #   nf4  — BitsAndBytes NF4 4-bit double quant (~500 MB for 1B, ~4.2 GB for 8B)
-#   fp16 — full float16, no quantisation (~2.4 GB for 1B; may improve gradient quality)
-#   bf16 — full bfloat16, no quantisation (~2.4 GB for 1B; preferred on Ampere+)
+#   fp16 — full float16, no quantization (~2.4 GB for 1B; may improve gradient quality)
+#   bf16 — full bfloat16, no quantization (~2.4 GB for 1B; preferred on Ampere+)
 _BASE_PRECISION = os.getenv("MODEL_BASE_PRECISION", "nf4").lower()
 if _BASE_PRECISION not in {"nf4", "fp16", "bf16"}:
     log.warning(
@@ -102,16 +102,16 @@ LLAMA3_LORA_TARGET_MODULES = [
 
 @dataclass
 class QuantizationConfig:
-    """NF4 4-bit quantisation parameters via bitsandbytes.
+    """NF4 4-bit quantization parameters via bitsandbytes.
 
-    NF4 with double quantisation reduces Llama-3.1-8B from ~16 GB (fp16) to
+    NF4 with double quantization reduces Llama-3.1-8B from ~16 GB (fp16) to
     ~4.2 GB of base weights. With LoRA + activations total usage is ~6-7 GB,
     within the 12 GB budget of an RTX 3060.
     """
 
     load_in_4bit: bool = True
     bnb_4bit_quant_type: str = "nf4"
-    bnb_4bit_use_double_quant: bool = True  # double quantisation — saves ~0.4 GB
+    bnb_4bit_use_double_quant: bool = True  # double quantization — saves ~0.4 GB
     bnb_4bit_compute_dtype: str = "bfloat16"
 
 
@@ -123,7 +123,7 @@ class LoRAAdapterConfig:
     lora_alpha: int = 32  # effective scale = lora_alpha / r = 2.0
     lora_dropout: float = 0.05
     bias: str = "none"  # "none" | "all" | "lora_only"
-    use_rslora: bool = False  # RSLoRA: normalises scale by sqrt(r)
+    use_rslora: bool = False  # RSLoRA: normalizes scale by sqrt(r)
     target_modules: list[str] = field(
         default_factory=lambda: LLAMA3_LORA_TARGET_MODULES
     )
@@ -152,11 +152,11 @@ class TrainingConfig:
     proximal_mu: float = 0.0
 
 
-# ── Quantised model loading ───────────────────────────────────────────────────
+# ── Quantized model loading ───────────────────────────────────────────────────
 
 
 def build_bnb_config(cfg: QuantizationConfig) -> BitsAndBytesConfig:
-    """Builds the NF4 4-bit BitsAndBytesConfig with double quantisation."""
+    """Builds the NF4 4-bit BitsAndBytesConfig with double quantization."""
     compute_dtype = getattr(torch, cfg.bnb_4bit_compute_dtype)
     return BitsAndBytesConfig(
         load_in_4bit=cfg.load_in_4bit,
@@ -171,7 +171,7 @@ def load_quantized_model(
     quant_cfg: QuantizationConfig | None = None,
     device_map: str | dict = "cuda:0",
 ) -> tuple[PreTrainedModel, PreTrainedTokenizerBase]:
-    """Loads model and tokeniser with precision controlled by MODEL_BASE_PRECISION.
+    """Loads model and tokenizer with precision controlled by MODEL_BASE_PRECISION.
 
     - nf4  (default): NF4 4-bit via BitsAndBytes; base weights frozen.
     - fp16 / bf16: full-precision load, no BitsAndBytes; higher VRAM, better gradients.
@@ -263,7 +263,7 @@ def apply_lora(
     Steps:
         1. `prepare_model_for_kbit_training` enables gradient checkpointing and
            converts LayerNorms to float32 (required for gradient stability with
-           quantised weights).
+           quantized weights).
         2. `LoraConfig` defines the adapter hyperparameters.
         3. `get_peft_model` freezes base weights and adds trainable LoRA modules
            to the specified attention and FFN projections.
@@ -280,7 +280,7 @@ def apply_lora(
 
     # prepare_model_for_kbit_training freezes base params, enables gradient
     # checkpointing, and casts LayerNorms to fp32. Safe for all precisions —
-    # the fp32 cast is a no-op on non-quantised models.
+    # the fp32 cast is a no-op on non-quantized models.
     model = prepare_model_for_kbit_training(
         model,
         use_gradient_checkpointing=True,
@@ -315,7 +315,7 @@ def apply_lora(
     return model
 
 
-# ── Dataset and tokenisation ──────────────────────────────────────────────────
+# ── Dataset and tokenization ──────────────────────────────────────────────────
 
 
 class ClinicalICD10Dataset(Dataset):
@@ -323,7 +323,7 @@ class ClinicalICD10Dataset(Dataset):
     PyTorch dataset for ICD-10 extraction fine-tuning.
 
     Each example is formatted as an instruction→response prompt in Alpaca style
-    and tokenised with truncation/padding to `max_length` tokens.
+    and tokenized with truncation/padding to `max_length` tokens.
     Loss is computed **only over response tokens** (instruction tokens receive
     label = -100 to be ignored in cross-entropy).
     """
@@ -359,7 +359,7 @@ class ClinicalICD10Dataset(Dataset):
     def _tokenize(self, example: TrainingExample) -> dict[str, torch.Tensor]:
         full_prompt = example.to_prompt()
 
-        # Tokenise the full prompt
+        # Tokenize the full prompt
         full_enc = self.tokenizer(
             full_prompt,
             max_length=self.max_length,
@@ -427,15 +427,15 @@ def train_one_round(
     """
     Executes one federated training round on local FHIR examples.
 
-    Returns only the **LoRA adapter weights** (not the quantised base weights),
+    Returns only the **LoRA adapter weights** (not the quantized base weights),
     which the Flower client sends to the server for aggregation.
 
     Args:
         model:      PeftModel returned by `apply_lora`.
-        tokenizer:  Tokeniser matching the model.
+        tokenizer:  Tokenizer matching the model.
         examples:   Training examples from `fetch_training_examples`.
         train_cfg:  Training hyperparameters (uses TrainingConfig() if None).
-        max_length: Maximum tokenisation length.
+        max_length: Maximum tokenization length.
 
     Returns:
         Tuple `(lora_parameters, num_examples, metrics)` in the format expected
@@ -818,7 +818,7 @@ def train_one_round(
     return get_lora_parameters(model), len(examples), metrics
 
 
-# ── Continuous training (centralised baseline) ────────────────────────────────
+# ── Continuous training (centralized baseline) ────────────────────────────────
 
 
 def train_continuous(
@@ -838,7 +838,7 @@ def train_continuous(
 
     Unlike train_one_round() (which recreates the optimizer on each federated
     call), here AdamW preserves 1st and 2nd moment estimates between epochs —
-    identical behaviour to standard centralised fine-tuning.
+    identical behavior to standard centralized fine-tuning.
 
     Returns a list of per-epoch metrics for round-by-round comparison with FL.
     """
@@ -979,7 +979,7 @@ def get_lora_parameters(model: PreTrainedModel) -> list[np.ndarray]:
     Extracts only the LoRA adapter weights as a list of NumPy arrays.
 
     This is the representation exchanged between Flower client and server during
-    federated aggregation (FedAvg or similar). The quantised base weights are
+    federated aggregation (FedAvg or similar). The quantized base weights are
     **not** included — only the LoRA deltas.
 
     Returns:

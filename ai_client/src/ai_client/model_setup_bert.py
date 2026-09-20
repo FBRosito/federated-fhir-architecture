@@ -13,7 +13,7 @@ federation — the PubMedBERT base weights remain frozen across all silos.
 
 Base model: microsoft/BiomedNLP-BiomedBERT-base-uncased-abstract-fulltext
   - 110M parameters, fp32/bf16, ~440 MB VRAM → multiple silos in parallel.
-  - No 4-bit quantisation (small model; fits comfortably in 12 GB VRAM).
+  - No 4-bit quantization (small model; fits comfortably in 12 GB VRAM).
 """
 
 from __future__ import annotations
@@ -289,7 +289,7 @@ class ICD10MultiLabelDataset(Dataset):
     """
     Dataset for multi-label ICD-10 coding.
 
-    Each example is tokenised; the label is a binary vector of length
+    Each example is tokenized; the label is a binary vector of length
     `num_labels` with 1 at the indices of codes present in the admission.
     """
 
@@ -345,8 +345,8 @@ def build_bert_dataset(
     Args:
         examples:    List of TrainingExample with `clinical_text` and `all_icd10_codes`.
         label_index: ICD-10 code → label vector index mapping.
-        tokenizer:   PubMedBERT tokeniser.
-        max_length:  Maximum tokenisation length.
+        tokenizer:   PubMedBERT tokenizer.
+        max_length:  Maximum tokenization length.
         num_labels:  Label vector size. If 0, uses len(label_index).
                      Must equal the model's num_labels for shape compatibility.
     """
