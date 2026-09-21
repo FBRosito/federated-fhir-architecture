@@ -102,14 +102,13 @@ tensorboard/
 wandb/
 mlflow/
 
-# experiment_logs: JSONs/figures directly under experiment_logs/ are
-# pre-publication results (Article 2 baselines/figures) — do not version.
-# Subdirectories such as archive_smoke_*/ (smoke tests, already tracked)
-# are not affected, since these patterns do not cross directories.
+# experiment_logs: JSONs/figures anywhere under experiment_logs/ (including
+# subdirectories such as archive_smoke_*/) are pre-publication results
+# (Article 2 baselines/figures) — do not version.
 experiment_logs/*.log
 experiment_logs/*.pid
 experiment_logs/*.lock
-experiment_logs/*.json
+experiment_logs/**/*.json
 experiment_logs/figures/
 
 # experiments/*/logs and experiments/logs: per-run sweep output (F1, epsilon,
