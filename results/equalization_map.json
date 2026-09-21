@@ -1,0 +1,272 @@
+[
+  {
+    "original": {
+      "method": "fedprox_dpsgd_record_level",
+      "sigma": 1.0,
+      "rounds": 20,
+      "delta": 1e-05,
+      "sample_rate": null,
+      "steps_per_round": null,
+      "silos": [
+        [
+          155,
+          1550
+        ],
+        [
+          150,
+          1508
+        ],
+        [
+          151,
+          1518
+        ],
+        [
+          152,
+          1527
+        ],
+        [
+          149,
+          1492
+        ]
+      ],
+      "accountant": "rdp"
+    },
+    "eps_star": 1.0,
+    "equalized": {
+      "method": "fedprox_dpsgd_record_level",
+      "sigma": 22.266402343750002,
+      "rounds": 20,
+      "delta": 1e-05,
+      "sample_rate": null,
+      "steps_per_round": null,
+      "silos": [
+        [
+          155,
+          1550
+        ],
+        [
+          150,
+          1508
+        ],
+        [
+          151,
+          1518
+        ],
+        [
+          152,
+          1527
+        ],
+        [
+          149,
+          1492
+        ]
+      ],
+      "accountant": "rdp"
+    },
+    "epsilon_achieved": 0.9982481376334371
+  },
+  {
+    "original": {
+      "method": "fedprox_dpsgd_record_level",
+      "sigma": 1.0,
+      "rounds": 20,
+      "delta": 1e-05,
+      "sample_rate": null,
+      "steps_per_round": null,
+      "silos": [
+        [
+          155,
+          1550
+        ],
+        [
+          150,
+          1508
+        ],
+        [
+          151,
+          1518
+        ],
+        [
+          152,
+          1527
+        ],
+        [
+          149,
+          1492
+        ]
+      ],
+      "accountant": "rdp"
+    },
+    "eps_star": 4.0,
+    "equalized": {
+      "method": "fedprox_dpsgd_record_level",
+      "sigma": 6.4462480468750005,
+      "rounds": 20,
+      "delta": 1e-05,
+      "sample_rate": null,
+      "steps_per_round": null,
+      "silos": [
+        [
+          155,
+          1550
+        ],
+        [
+          150,
+          1508
+        ],
+        [
+          151,
+          1518
+        ],
+        [
+          152,
+          1527
+        ],
+        [
+          149,
+          1492
+        ]
+      ],
+      "accountant": "rdp"
+    },
+    "epsilon_achieved": 3.9785280931018874
+  },
+  {
+    "original": {
+      "method": "fedprox_dpsgd_record_level",
+      "sigma": 1.0,
+      "rounds": 20,
+      "delta": 1e-05,
+      "sample_rate": null,
+      "steps_per_round": null,
+      "silos": [
+        [
+          155,
+          1550
+        ],
+        [
+          150,
+          1508
+        ],
+        [
+          151,
+          1518
+        ],
+        [
+          152,
+          1527
+        ],
+        [
+          149,
+          1492
+        ]
+      ],
+      "accountant": "rdp"
+    },
+    "eps_star": 8.0,
+    "equalized": {
+      "method": "fedprox_dpsgd_record_level",
+      "sigma": 3.6142451171875,
+      "rounds": 20,
+      "delta": 1e-05,
+      "sample_rate": null,
+      "steps_per_round": null,
+      "silos": [
+        [
+          155,
+          1550
+        ],
+        [
+          150,
+          1508
+        ],
+        [
+          151,
+          1518
+        ],
+        [
+          152,
+          1527
+        ],
+        [
+          149,
+          1492
+        ]
+      ],
+      "accountant": "rdp"
+    },
+    "epsilon_achieved": 7.934362825925224
+  },
+  {
+    "original": {
+      "method": "client_level_dp",
+      "sigma": 1.0,
+      "rounds": 20,
+      "delta": 1e-05,
+      "sample_rate": null,
+      "steps_per_round": null,
+      "silos": null,
+      "accountant": "client_level"
+    },
+    "eps_star": 1.0,
+    "equalized": {
+      "method": "client_level_dp",
+      "sigma": 17.969570312500004,
+      "rounds": 20,
+      "delta": 1e-05,
+      "sample_rate": null,
+      "steps_per_round": null,
+      "silos": null,
+      "accountant": "client_level"
+    },
+    "epsilon_achieved": 1.007489333038009
+  },
+  {
+    "original": {
+      "method": "client_level_dp",
+      "sigma": 1.0,
+      "rounds": 20,
+      "delta": 1e-05,
+      "sample_rate": null,
+      "steps_per_round": null,
+      "silos": null,
+      "accountant": "client_level"
+    },
+    "eps_star": 4.0,
+    "equalized": {
+      "method": "client_level_dp",
+      "sigma": 5.176729492187501,
+      "rounds": 20,
+      "delta": 1e-05,
+      "sample_rate": null,
+      "steps_per_round": null,
+      "silos": null,
+      "accountant": "client_level"
+    },
+    "epsilon_achieved": 4.000840566854219
+  },
+  {
+    "original": {
+      "method": "client_level_dp",
+      "sigma": 1.0,
+      "rounds": 20,
+      "delta": 1e-05,
+      "sample_rate": null,
+      "steps_per_round": null,
+      "silos": null,
+      "accountant": "client_level"
+    },
+    "eps_star": 8.0,
+    "equalized": {
+      "method": "client_level_dp",
+      "sigma": 2.8330029296875,
+      "rounds": 20,
+      "delta": 1e-05,
+      "sample_rate": null,
+      "steps_per_round": null,
+      "silos": null,
+      "accountant": "client_level"
+    },
+    "epsilon_achieved": 8.07172288953526
+  }
+]

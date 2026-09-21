@@ -1,0 +1,29 @@
+[project]
+name = "dp-equalization"
+version = "0.1.0"
+description = "Article 2 experiment: privacy-budget equalization operator E for fair-budget DP method comparison (HERALD)"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "ai-client",
+    "client-level-dp",
+    "opacus>=1.5.4,<2.0.0",
+]
+
+[tool.uv.sources]
+ai-client = { path = "../../ai_client", editable = true }
+client-level-dp = { path = "../client-level-dp", editable = true }
+
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[build-system]
+requires = ["uv_build>=0.11.2,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
